@@ -2919,6 +2919,79 @@
             if (!text.trim()) throw new Error('Il PDF non contiene testo estraibile: potrebbe essere una scansione. In quel caso serve OCR.');
             return { text, pages: pdf.numPages };
         }
+        function isNormattivaOpenDataJson(data) {
+            return Boolean(
+                data && typeof data === 'object' && !Array.isArray(data)
+                && (data.metadati || data.intestazione)
+                && (Array.isArray(data.articolato?.elementi) || Array.isArray(data.annessi?.elementi))
+            );
+        }
+        function collectNormattivaTextNodes(node, out) {
+            if (!node) return;
+            if (Array.isArray(node)) { node.forEach(item => collectNormattivaTextNodes(item, out)); return; }
+            if (typeof node !== 'object') return;
+            if (typeof node.testo === 'string' && node.testo.trim()) out.push(node);
+            if (Array.isArray(node.elementi)) node.elementi.forEach(child => collectNormattivaTextNodes(child, out));
+        }
+        function parseNormattivaOpenDataJson(data, fallbackSource, selectedCategory) {
+            const articolatoNodes = [];
+            const annessiNodes = [];
+            collectNormattivaTextNodes(data.articolato?.elementi, articolatoNodes);
+            collectNormattivaTextNodes(data.annessi?.elementi, annessiNodes);
+            // Nei Codici approvati con R.D. o D.P.R. (es. Codice Civile, Codice Penale),
+            // l'articolato contiene solo 1-2 articoli di approvazione mentre il Codice e negli annessi.
+            const nodes = (annessiNodes.length >= 20 && articolatoNodes.length <= 5)
+                ? annessiNodes
+                : [...articolatoNodes, ...annessiNodes];
+            if (!nodes.length) return [];
+            const cat = CATEGORY_LABELS[selectedCategory] ? selectedCategory : 'notebook';
+            const catLabel = CATEGORY_LABELS[cat] || 'I Miei Codici (Importati)';
+            const source = String(fallbackSource || data.metadati?.titoloDoc || 'Codice Normattiva').replace(/\s+/g, ' ').trim();
+            const baseUrn = String(data.metadati?.urn || '').trim();
+            const externalUrl = baseUrn
+                ? 'https://www.normattiva.it/uri-res/N2Ls?' + baseUrn + '!vig='
+                : 'https://www.normattiva.it/';
+            const suffixRe = /\s+(?=(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies)\b)/gi;
+
+            return nodes.map((node, index) => {
+                const rawNum = String(node.numNir || node.idNir || '').trim();
+                const prefixMatch = rawNum.match(/^(.*?)-\s*art\.?\s*(.+)$/i);
+                const annexPrefix = prefixMatch ? prefixMatch[1].trim() : '';
+                const isPreleggi = /disposizioni\s+sulla\s+legge\s+in\s+generale|preleggi/i.test(annexPrefix);
+                let numPart = prefixMatch ? prefixMatch[2].trim() : rawNum.replace(/^art(?:icolo)?\.?\s*/i, '').trim();
+                numPart = numPart.replace(/\s*\.\s*/g, '.').replace(/\s*-\s*/g, '-').replace(suffixRe, '-');
+                const article = numPart
+                    ? ('Art. ' + numPart + (isPreleggi ? ' Preleggi' : ''))
+                    : (source + ' #' + (index + 1));
+                const rubrica = String(node.rubricaNir || '').replace(/\s+/g, ' ').trim();
+                const title = rubrica ? (article + ' — ' + rubrica) : article;
+                const rawText = String(node.testo || '').replace(/\r\n/g, '\n').trim();
+                const paragraphs = rawText.split(/\n\s*\n+/).map(p => p.replace(/[ \t]*\n[ \t]*/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+                const noteText = String(node.noteArt || '').replace(/\s+/g, ' ').trim();
+                const bodyHtml = '<h3>' + safeHtml(title) + '</h3>'
+                    + paragraphs.map(p => '<p>' + safeHtml(p) + '</p>').join('')
+                    + (noteText ? '<p><em>Note: </em>' + safeHtml(noteText) + '</p>' : '');
+                const plainBody = paragraphs.join(' ');
+                const cleanedSummary = plainBody
+                    .replace(/^(?:DISPOSIZIONI\s+SULLA\s+LEGGE\s+IN\s+GENERALE|CODICE\s+CIVILE|CODICE\s+PENALE|CODICE\s+DI\s+PROCEDURA\s+(?:CIVILE|PENALE))\s+/i, '')
+                    .replace(/^Art(?:icolo)?\.?\s*[\d\w./-]+\.?\s*(?:\([^)]{1,140}\)\.?)?\s*/i, '')
+                    .trim();
+                const tags = [cat, 'importato', 'normattiva', source.toLowerCase()];
+                if (isPreleggi) tags.push('preleggi');
+                return {
+                    id: 'norm-' + index,
+                    category: cat,
+                    categoryLabel: catLabel,
+                    article,
+                    title: title.slice(0, 160),
+                    source,
+                    tags,
+                    summary: (cleanedSummary || plainBody || title).slice(0, 260),
+                    fullText: bodyHtml,
+                    externalUrl
+                };
+            });
+        }
         async function handleNotebookFileUpload(event) {
             const file = event.target.files && event.target.files[0]; if (!file) return;
             const title = document.getElementById('import-source-title');
@@ -2936,6 +3009,27 @@
                 if (file.name.toLowerCase().endsWith('.json')) {
                     try {
                         const data = JSON.parse(text);
+                        if (isNormattivaOpenDataJson(data)) {
+                            const selectedCat = document.getElementById('import-category-select')?.value || 'notebook';
+                            const chosenSource = (sourceProvided ? title.value.trim() : file.name.replace(/\.[^/.]+$/, '')) || 'Codice Normattiva';
+                            const normEntries = parseNormattivaOpenDataJson(data, chosenSource, selectedCat);
+                            if (normEntries.length) {
+                                isImporting = true;
+                                setImportBusy('Importazione Normattiva…', 'Sto salvando ' + normEntries.length.toLocaleString('it-IT') + ' articoli dal JSON di Normattiva in IndexedDB.');
+                                try {
+                                    const count = await applyImportedDocs(normEntries, chosenSource);
+                                    event.target.value = '';
+                                    closeImportModal();
+                                    showToast('Normattiva JSON importato: ' + count.toLocaleString('it-IT') + ' articoli salvati.');
+                                } catch (error) {
+                                    showToast(error.message || 'Importazione JSON Normattiva non completata.');
+                                } finally {
+                                    isImporting = false;
+                                    resetImportButton();
+                                }
+                                return;
+                            }
+                        }
                         const builtInIds = new Set(legalDatabase.map(doc => doc.id));
                         const hasImportedArray = !Array.isArray(data) && Array.isArray(data.importedDocs);
                         const rawRows = Array.isArray(data)
@@ -3169,7 +3263,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.0.0';
+        const APP_VERSION = '1.0.1';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -3681,7 +3775,7 @@
                     <i class="fa-solid fa-file-import text-amber-400"></i>
                     <div>
                         <h3 id="import-modal-title" class="font-bold text-base leading-tight">Importa Codici e Dati Normativi</h3>
-                        <p class="text-[11px] text-slate-300">Carica PDF testuali, Codici Civile/Penale o archivi (.json, .txt, .md)</p>
+                        <p class="text-[11px] text-slate-300">Carica JSON ufficiali da dati.normattiva.it, PDF testuali o archivi (.json, .txt, .md)</p>
                     </div>
                 </div>
                 <button onclick="closeImportModal()" aria-label="Chiudi finestra importazione" class="text-slate-300 hover:text-white p-1.5">
@@ -3907,7 +4001,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>IusSearch Pro</strong> <span class="text-slate-400">v1.0.0</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>IusSearch Pro</strong> <span class="text-slate-400">v1.0.1</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

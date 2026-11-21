@@ -1,7 +1,7 @@
 // IusSearch Pro — Service Worker PWA
 // Per notificare gli utenti di una nuova versione su GitHub Pages,
 // incrementa APP_VERSION (es. '1.0.1', '1.0.2', ...) quando aggiorni i file.
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const CACHE_NAME = `iussearch-pro-v${APP_VERSION}`;
 const CORE_ASSETS = [
   './',

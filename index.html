@@ -12,8 +12,8 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- CSS statico locale (funziona 100% offline in PWA) -->
+    <link rel="stylesheet" href="./styles.css">
     <!-- Google Fonts: Inter & Lora -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,7 +25,6 @@
         if (window.pdfjsLib?.GlobalWorkerOptions) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
-        tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Lora', 'serif'] }, colors: { navy: { 800: '#1e293b', 900: '#0f172a', 950: '#090d16' } } } } };
         // =========================================================================
         // 1. ARCHIVIO COMPLETO DELLE NORMATIVE E ARTICOLI (Civile, Penale, Pubblico)
         // =========================================================================
@@ -281,6 +280,11 @@
         let importedDocs = [];
         let localArticleLookupCache = { docsRef: null, byArticle: new Map() };
         let bookmarks = [];
+        let bookmarkNotes = {};
+        let bookmarkFilterQuery = '';
+        let invertedSearchIndex = null;
+        let searchIndexDocsRef = null;
+        let allDocumentsCache = { importedRef: null, docs: null };
         let currentCategory = "all";
         let currentSourceFilter = "";
         let showImportedOnly = false;
@@ -419,9 +423,13 @@
             if (saved === null) { saved = oldBookmarks.length ? oldBookmarks : (seed.bookmarks || []); await writeStored('bookmarks', saved).catch(() => {}); }
             // Mantiene i segnalibri degli articoli importati fino alla lettura differita dell'archivio.
             bookmarks = Array.isArray(saved) ? saved : [];
+            const savedNotes = await readStored('bookmarkNotes').catch(() => null);
+            bookmarkNotes = (savedNotes && typeof savedNotes === 'object' && !Array.isArray(savedNotes))
+                ? savedNotes
+                : (seed.bookmarkNotes && typeof seed.bookmarkNotes === 'object' ? seed.bookmarkNotes : {});
         }
         const storageReady = initializeStorage();
-        function getAllDocuments() { return [...importedDocs, ...legalDatabase]; }
+        function getAllDocuments() { if (allDocumentsCache.importedRef !== importedDocs || !allDocumentsCache.docs) { allDocumentsCache = { importedRef: importedDocs, docs: [...importedDocs, ...legalDatabase] }; } return allDocumentsCache.docs; }
         function getStandaloneSeedId(seed) {
             if (seed?.seedId) return String(seed.seedId);
             const docs = Array.isArray(seed?.importedDocs) ? seed.importedDocs : [];
@@ -494,16 +502,189 @@
             })().finally(() => { importedDocsLoadPromise = null; });
             return importedDocsLoadPromise;
         }
+        function buildInvertedIndexInWorker(docs) {
+            return new Promise((resolve, reject) => {
+                if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+                    return reject(new Error('Worker non supportato'));
+                }
+                const workerSrc = `
+                    function stripHtml(s) {
+                        return String(s || '')
+                            .replace(/<[^>]+>/g, ' ')
+                            .replace(/&nbsp;/gi, ' ')
+                            .replace(/&amp;/gi, '&')
+                            .replace(/&lt;/gi, '<')
+                            .replace(/&gt;/gi, '>')
+                            .replace(/&quot;/gi, '"')
+                            .replace(/&#39;/gi, "'");
+                    }
+                    function norm(v) {
+                        return String(v || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').replace(/[’‘\`´]/g, "'").toLowerCase()
+                            .replace(/(^|[^a-z])c\\s*\\.?\\s*p\\s*\\.?\\s*c\\s*\\.?(?=$|[^a-z])/g, '$1 codice di procedura civile ')
+                            .replace(/(^|[^a-z])c\\s*\\.?\\s*p\\s*\\.?\\s*p\\s*\\.?(?=$|[^a-z])/g, '$1 codice di procedura penale ')
+                            .replace(/(^|[^a-z])c\\s*\\.?\\s*c\\s*\\.?(?=$|[^a-z])/g, '$1 codice civile ')
+                            .replace(/(^|[^a-z])c\\s*\\.?\\s*p\\s*\\.?(?=$|[^a-z])/g, '$1 codice penale ')
+                            .replace(/(^|[^a-z])cost\\s*\\.?(?=$|[^a-z])/g, '$1 costituzione ')
+                            .replace(/(^|[^a-z])d\\s*\\.?\\s*l\\s*\\.?\\s*g\\s*\\.?\\s*s\\s*\\.?(?=$|[^a-z])/g, '$1 decreto legislativo ')
+                            .replace(/(^|[^a-z])d\\s*\\.?\\s*p\\s*\\.?\\s*r\\s*\\.?(?=$|[^a-z])/g, '$1 decreto del presidente della repubblica ')
+                            .replace(/(^|[^a-z])d\\s*\\.?\\s*l\\s*\\.?(?=$|[^a-z])/g, '$1 decreto legge ')
+                            .replace(/(^|[^a-z])(?:l|legge)\\s*\\.?(?=\\s|$)/g, '$1 legge ')
+                            .replace(/(^|[^a-z])art(?:icolo)?\\s*\\.?(?=$|[^a-z])/g, '$1articolo')
+                            .replace(/\\b(\\d+)\\s*-?\\s*(bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies)\\b/g, '$1-$2')
+                            .replace(/\\b(\\d+)\\s*\\.\\s*(\\d+)\\b/g, '$1.$2')
+                            .replace(/\\s+/g, ' ').trim();
+                    }
+                    self.onmessage = function(e) {
+                        const rows = e.data || [];
+                        const postings = Object.create(null);
+                        const entries = new Array(rows.length);
+                        for (let i = 0; i < rows.length; i++) {
+                            const r = rows[i];
+                            const bodyText = stripHtml(r.fullText || '').replace(/\\s+/g, ' ').trim();
+                            const article = norm(r.article || '');
+                            const title = norm(r.title || '');
+                            const tags = norm((r.tags || []).join(' '));
+                            const summary = norm(r.summary || '');
+                            const body = norm(bodyText);
+                            const text = norm([r.article, r.title, r.source, r.sectionPath || '', r.summary, bodyText, ...(r.tags || [])].join(' '));
+                            entries[i] = { article, title, tags, summary, body, bodyText, text };
+                            const tokens = text.split(/[^a-z0-9-]+/);
+                            const seen = new Set();
+                            const addToken = tok => {
+                                if (!tok || (tok.length < 2 && !/^\\d$/.test(tok)) || seen.has(tok)) return;
+                                seen.add(tok);
+                                if (!postings[tok]) postings[tok] = [];
+                                postings[tok].push(i);
+                                if (tok.length >= 6) {
+                                    const stem = (tok.endsWith('zioni') || tok.endsWith('zione') || /[aeio]$/.test(tok)) ? tok.slice(0, -1) : '';
+                                    if (stem && !seen.has(stem)) {
+                                        seen.add(stem);
+                                        if (!postings[stem]) postings[stem] = [];
+                                        postings[stem].push(i);
+                                    }
+                                }
+                            };
+                            for (let t = 0; t < tokens.length; t++) {
+                                const tok = tokens[t];
+                                addToken(tok);
+                                if (tok.includes('-')) {
+                                    const parts = tok.split('-');
+                                    for (let p = 0; p < parts.length; p++) addToken(parts[p]);
+                                }
+                            }
+                        }
+                        self.postMessage({ entries, postings });
+                    };
+                `;
+                let url = '';
+                let worker = null;
+                try {
+                    url = URL.createObjectURL(new Blob([workerSrc], { type: 'application/javascript' }));
+                    worker = new Worker(url);
+                } catch (err) {
+                    if (url) URL.revokeObjectURL(url);
+                    return reject(err);
+                }
+                const cleanup = () => { try { worker.terminate(); } catch (_) {} if (url) URL.revokeObjectURL(url); };
+                worker.onmessage = ev => { cleanup(); resolve(ev.data); };
+                worker.onerror = err => { cleanup(); reject(err); };
+                const payload = docs.map(d => ({
+                    article: d.article || '', title: d.title || '', source: d.source || '',
+                    sectionPath: d.sectionPath || '', summary: d.summary || '',
+                    fullText: d.fullText || '', tags: Array.isArray(d.tags) ? d.tags : []
+                }));
+                worker.postMessage(payload);
+            });
+        }
+        function getCandidateDocumentsForQuery(documents, query, extraTerms = []) {
+            if (!invertedSearchIndex || searchIndexDocsRef !== documents) return documents;
+            const normQ = normalizeSearchText(query).trim();
+            if (normQ.length < 2) return documents;
+            const collectIdsForPhrase = phrase => {
+                const terms = normalizeSearchText(phrase).trim().split(/[^a-z0-9-]+/).filter(t => t.length >= 3 || /\d/.test(t));
+                if (!terms.length) return null;
+                let current = null;
+                for (const term of terms) {
+                    const matched = new Set();
+                    const direct = invertedSearchIndex.get(term);
+                    if (direct) direct.forEach(idx => matched.add(idx));
+                    let stem = term;
+                    if (stem.length >= 7 && (stem.endsWith('zioni') || stem.endsWith('zione'))) stem = stem.slice(0, -1);
+                    else if (stem.length >= 6 && /[aeio]$/.test(stem)) stem = stem.slice(0, -1);
+                    if (stem !== term) {
+                        const stemmed = invertedSearchIndex.get(stem);
+                        if (stemmed) stemmed.forEach(idx => matched.add(idx));
+                    }
+                    if (term.length >= 4) {
+                        invertedSearchIndex.forEach((list, key) => {
+                            if (key.includes(term) || (stem !== term && key.startsWith(stem))) {
+                                for (let k = 0; k < list.length; k++) matched.add(list[k]);
+                            }
+                        });
+                    }
+                    if (current === null) current = matched;
+                    else {
+                        const next = new Set();
+                        current.forEach(idx => { if (matched.has(idx)) next.add(idx); });
+                        current = next;
+                    }
+                    if (!current.size) return current;
+                }
+                return current;
+            };
+            const mainIds = collectIdsForPhrase(normQ);
+            if (mainIds === null) return documents;
+            const union = new Set(mainIds);
+            (extraTerms || []).forEach(extra => {
+                const ids = collectIdsForPhrase(extra);
+                if (ids) ids.forEach(idx => union.add(idx));
+            });
+            return [...union].sort((a, b) => a - b).map(idx => documents[idx]).filter(Boolean);
+        }
         async function ensureSearchIndexBuilt() {
             if (searchIndexReady) return;
             if (searchIndexPromise) return searchIndexPromise;
             searchIndexPromise = (async () => {
                 const documents = getAllDocuments();
-                // Indicizza a piccoli blocchi: il browser può aggiornare la pagina
-                // e la casella di ricerca resta reattiva anche con archivi grandi.
-                for (let i = 0; i < documents.length; i += 25) {
-                    documents.slice(i, i + 25).forEach(getDocumentSearchIndex);
-                    if (i + 25 < documents.length) await new Promise(resolve => setTimeout(resolve, 0));
+                try {
+                    const built = await buildInvertedIndexInWorker(documents);
+                    const postingsMap = new Map();
+                    Object.keys(built.postings || {}).forEach(tok => postingsMap.set(tok, built.postings[tok]));
+                    for (let i = 0; i < documents.length; i++) {
+                        if (built.entries[i]) documentSearchCache.set(documents[i], built.entries[i]);
+                    }
+                    invertedSearchIndex = postingsMap;
+                    searchIndexDocsRef = documents;
+                } catch (_) {
+                    const postingsMap = new Map();
+                    for (let i = 0; i < documents.length; i += 40) {
+                        const end = Math.min(i + 40, documents.length);
+                        for (let j = i; j < end; j++) {
+                            const idxObj = getDocumentSearchIndex(documents[j]);
+                            const seen = new Set();
+                            const addFallbackTok = tok => {
+                                if (!tok || (tok.length < 2 && !/^\d$/.test(tok)) || seen.has(tok)) return;
+                                seen.add(tok);
+                                if (!postingsMap.has(tok)) postingsMap.set(tok, []);
+                                postingsMap.get(tok).push(j);
+                                if (tok.length >= 6) {
+                                    const stem = (tok.endsWith('zioni') || tok.endsWith('zione') || /[aeio]$/.test(tok)) ? tok.slice(0, -1) : '';
+                                    if (stem && !seen.has(stem)) {
+                                        seen.add(stem);
+                                        if (!postingsMap.has(stem)) postingsMap.set(stem, []);
+                                        postingsMap.get(stem).push(j);
+                                    }
+                                }
+                            };
+                            for (const tok of idxObj.text.split(/[^a-z0-9-]+/)) {
+                                addFallbackTok(tok);
+                                if (tok.includes('-')) tok.split('-').forEach(addFallbackTok);
+                            }
+                        }
+                        if (end < documents.length) await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                    invertedSearchIndex = postingsMap;
+                    searchIndexDocsRef = documents;
                 }
                 searchIndexReady = true;
             })().finally(() => { searchIndexPromise = null; });
@@ -682,6 +863,9 @@
             searchIndexPromise = null;
             searchPreparationPromise = null;
             documentSearchCache = new WeakMap();
+            invertedSearchIndex = null;
+            searchIndexDocsRef = null;
+            allDocumentsCache = { importedRef: null, docs: null };
             localArticleLookupCache = { docsRef: null, byArticle: new Map() };
         }
         async function removeDuplicateImportedHeadings() {
@@ -754,6 +938,87 @@
             });
             cleanChildren(parsed.body);
             return parsed.body.innerHTML;
+        }
+        function detectArticleStatus(item) {
+            if (!item) return { abrogated: false, constitutional: false };
+            if (typeof item.isAbrogated === 'boolean' && typeof item.hasConstitutionalNote === 'boolean') {
+                return { abrogated: item.isAbrogated, constitutional: item.hasConstitutionalNote };
+            }
+            const titleText = String(item.title || '') + ' ' + String(item.article || '');
+            const summaryText = String(item.summary || '');
+            const rawHtml = String(item.fullText || '');
+            const plain = rawHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            const beforeNotes = plain.split(/(?:^|\s)-{4,}|\bAGGIORNAMENTO\s*\(/i)[0].trim();
+            const abrogated = /\[\s*abrogat[oa]\s*\]|\(\s*abrogat[oa]\s*\)|\(\(\s*articolo\s+abrogato|\barticol[oi]\s+abrogat[oi]\b/i.test(titleText + ' ' + beforeNotes)
+                && (beforeNotes.length < 420 || /\[\s*abrogat[oa]\s*\]|\(\s*abrogat[oa]\s*\)/i.test(titleText));
+            const constitutional = /illegittimit[aà']\s+costituzionale|corte\s+costituzionale/i.test(plain + ' ' + summaryText);
+            return { abrogated, constitutional };
+        }
+        function renderStatusBadgesHtml(item) {
+            const st = detectArticleStatus(item);
+            let out = '';
+            if (st.abrogated) {
+                out += '<span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-200">ABROGATO</span>';
+            }
+            if (st.constitutional) {
+                out += '<span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">CORTE COST.</span>';
+            }
+            if (item?.vigenzaDate) {
+                out += '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">Vigente al ' + escapeHtml(item.vigenzaDate) + '</span>';
+            } else if (legalDatabase.some(d => d.id === item?.id)) {
+                out += '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">Scheda di sintesi</span>';
+            }
+            return out;
+        }
+        function getAdjacentArticleIds(item) {
+            if (!item) return { prev: null, next: null };
+            const isBuiltIn = legalDatabase.some(d => d.id === item.id);
+            const pool = isBuiltIn
+                ? legalDatabase
+                : importedDocs.filter(d => normalizeCodeName(d.source || d.categoryLabel) === normalizeCodeName(item.source || item.categoryLabel));
+            if (pool.length < 2) return { prev: null, next: null };
+            const hasOrder = pool.every(d => Number.isFinite(d.orderIndex));
+            const ordered = hasOrder
+                ? [...pool].sort((a, b) => a.orderIndex - b.orderIndex)
+                : pool;
+            const pos = ordered.findIndex(d => d.id === item.id);
+            if (pos < 0) return { prev: null, next: null };
+            return {
+                prev: pos > 0 ? ordered[pos - 1] : null,
+                next: pos < ordered.length - 1 ? ordered[pos + 1] : null
+            };
+        }
+        function updateModalArticleNavigation(item) {
+            const nav = document.getElementById('modal-article-nav');
+            const prevBtn = document.getElementById('modal-prev-article-btn');
+            const nextBtn = document.getElementById('modal-next-article-btn');
+            if (!nav || !prevBtn || !nextBtn) return;
+            if (!item) { nav.classList.add('hidden'); return; }
+            const { prev, next } = getAdjacentArticleIds(item);
+            if (!prev && !next) { nav.classList.add('hidden'); return; }
+            nav.classList.remove('hidden');
+            prevBtn.disabled = !prev;
+            prevBtn.classList.toggle('opacity-50', !prev);
+            prevBtn.innerHTML = prev
+                ? '<i class="fa-solid fa-arrow-left mr-1"></i>' + escapeHtml(shortenLegalLabel(prev.article, 24))
+                : '<i class="fa-solid fa-arrow-left mr-1"></i>Art. precedente';
+            prevBtn.onclick = prev ? () => openDetailModal(prev.id) : null;
+            nextBtn.disabled = !next;
+            nextBtn.classList.toggle('opacity-50', !next);
+            nextBtn.innerHTML = next
+                ? escapeHtml(shortenLegalLabel(next.article, 24)) + '<i class="fa-solid fa-arrow-right ml-1"></i>'
+                : 'Art. successivo<i class="fa-solid fa-arrow-right ml-1"></i>';
+            nextBtn.onclick = next ? () => openDetailModal(next.id) : null;
+        }
+        async function saveBookmarkNotes() {
+            return writeStored('bookmarkNotes', bookmarkNotes).catch(() => showToast('Salvataggio note non riuscito.'));
+        }
+        async function updateBookmarkNote(docId, noteText) {
+            const cleaned = String(noteText || '').trim();
+            if (cleaned) bookmarkNotes[docId] = cleaned;
+            else delete bookmarkNotes[docId];
+            await saveBookmarkNotes();
+            showToast(cleaned ? 'Nota salvata sul segnalibro.' : 'Nota rimossa.');
         }
         async function saveImportedDocs() { return writeStored('importedDocs', importedDocs).catch(() => showToast('Salvataggio locale non riuscito: esporta una copia dei dati.')); }
         function saveBookmarks() { return writeStored('bookmarks', bookmarks).catch(() => showToast('Salvataggio dei segnalibri non riuscito.')); }
@@ -1014,7 +1279,7 @@
             if (/brocardi\.it\/search\?q=/i.test(String(url || ''))) return `Cerca “${shortenLegalLabel(reference, 34)}” su Brocardi`;
             if (/brocardi\.it\/.*\/art[\w.-]+\.html/i.test(String(url || ''))) return `Apri ${shortenLegalLabel(reference, 32)} su Brocardi`;
             if (directTitle) return `Apri pagina “${shortenLegalLabel(directTitle, 32)}” su Brocardi`;
-            const codeLabel = { cc: 'Codice civile', cp: 'Codice penale', cpc: 'Codice di procedura civile', cpp: 'Codice di procedura penale', cost: 'Costituzione' }[getReferenceCodeHint(reference)];
+            const codeLabel = { cc: 'Codice civile', cp: 'Codice penale', cpc: 'Codice di procedura civile', cpp: 'Codice di procedura penale', cost: 'Costituzione', disp_att_cc: 'Disp. att. c.c.', disp_att_cpc: 'Disp. att. c.p.c.', disp_att_cpp: 'Disp. att. c.p.p.', disp_att_cp: 'Disp. att. c.p.' }[getReferenceCodeHint(reference)];
             if (codeLabel) return `Apri ${codeLabel} su Brocardi`;
             const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch (_) { return ''; } })();
             const pageLabels = [
@@ -1032,10 +1297,18 @@
         function inferReferenceCodeFromContext(reference, context, citationStart = 0, citationLength = 0) {
             if (getReferenceCodeHint(reference)) return '';
             const text = String(context || '');
-            const codePattern = /c\.p\.c\.|c\.p\.p\.|c\.c\.|c\.p\.|Cost\./gi;
+            const codePattern = /disp\.?\s*att\.?\s*(?:c\.p\.c\.|c\.p\.p\.|c\.c\.|c\.p\.)|c\.p\.c\.|c\.p\.p\.|c\.c\.|c\.p\.|Cost\./gi;
             const matches = [...text.matchAll(codePattern)];
             if (!matches.length) return '';
-            const normalized = value => /c\.p\.c\./i.test(value) ? 'c.p.c.' : /c\.p\.p\./i.test(value) ? 'c.p.p.' : /c\.c\./i.test(value) ? 'c.c.' : /c\.p\./i.test(value) ? 'c.p.' : 'Cost.';
+            const normalized = value => {
+                if (/disp\.?\s*att\.?/i.test(value)) {
+                    if (/c\.p\.c\./i.test(value)) return 'disp. att. c.p.c.';
+                    if (/c\.p\.p\./i.test(value)) return 'disp. att. c.p.p.';
+                    if (/c\.c\./i.test(value)) return 'disp. att. c.c.';
+                    if (/c\.p\./i.test(value)) return 'disp. att. c.p.';
+                }
+                return /c\.p\.c\./i.test(value) ? 'c.p.c.' : /c\.p\.p\./i.test(value) ? 'c.p.p.' : /c\.c\./i.test(value) ? 'c.c.' : /c\.p\./i.test(value) ? 'c.p.' : 'Cost.';
+            };
             const nearest = matches.map(match => ({
                 code: normalized(match[0]),
                 distance: match.index >= citationStart + citationLength
@@ -1230,7 +1503,9 @@
             }
 
             const importedIds = showImportedOnly ? new Set(importedDocs.map(item => item.id)) : null;
-            let filtered = getAllDocuments().filter(item => {
+            const allDocs = getAllDocuments();
+            const candidatePool = q.trim().length >= 2 ? getCandidateDocumentsForQuery(allDocs, q, aiSearchTerms) : allDocs;
+            let filtered = candidatePool.filter(item => {
                 if (importedIds && !importedIds.has(item.id)) return false;
                 const matchesCategory = currentCategory === "all" || item.category === currentCategory;
                 const matchesSource = !currentSourceFilter || normalizeCodeName(item.source || item.categoryLabel) === currentSourceFilter;
@@ -1276,12 +1551,14 @@
                             <span class="text-xs font-medium px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600">
                                 ${escapeHtml(item.categoryLabel)}
                             </span>
+                            ${renderStatusBadgesHtml(item)}
                         </div>
                         <button type="button" data-toggle-bookmark="${escapeHtml(item.id)}" class="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-amber-500 transition" title="Salva norma">
                             <i class="${isSaved ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i>
                         </button>
                     </div>
 
+                    ${item.sectionPath ? `<p class="text-[11px] text-slate-500 mb-1 truncate" title="${escapeHtml(item.sectionPath)}"><i class="fa-solid fa-sitemap mr-1 text-slate-400"></i>${escapeHtml(item.sectionPath)}</p>` : ''}
                     <h4 data-open-doc="${escapeHtml(item.id)}" class="text-base sm:text-lg font-bold text-slate-900 hover:text-amber-700 leading-snug cursor-pointer transition">
                         ${highlightText(item.title, currentQuery)}
                     </h4>
@@ -1402,12 +1679,20 @@
         function getReferenceCodeHint(value) {
             // Le fonti importate possono usare slug con trattini (es.
             // "codice-civile 09-2026"): uniforma i separatori prima del match.
-            const text = normalizeSearchText(value).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+            const raw = String(value || '');
+            const text = normalizeSearchText(raw).replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+            const isDispAtt = /\bdisp(?:osizioni)?\s*(?:per\s+l\s*|d\s*|di\s+)?att(?:uazione)?\b|\bnorme\s+di\s+attuazione\b/i.test(text);
+            if (isDispAtt) {
+                if (text.includes('codice di procedura civile') || text.includes('procedura civile')) return 'disp_att_cpc';
+                if (text.includes('codice di procedura penale') || text.includes('procedura penale')) return 'disp_att_cpp';
+                if (text.includes('codice civile')) return 'disp_att_cc';
+                if (text.includes('codice penale') || /\bc\s*\.?\s*p\s*\.?\b/i.test(raw)) return 'disp_att_cp';
+            }
             if (text.includes('codice di procedura civile') || text.includes('procedura civile')) return 'cpc';
             if (text.includes('codice di procedura penale') || text.includes('procedura penale')) return 'cpp';
             if (text.includes('codice civile')) return 'cc';
             if (text.includes('costituzione')) return 'cost';
-            if (text.includes('codice penale') || /\bc\s*\.?\s*p\s*\.?\b/i.test(String(value || ''))) return 'cp';
+            if (text.includes('codice penale') || /\bc\s*\.?\s*p\s*\.?\b/i.test(raw)) return 'cp';
             return '';
         }
         function getDocumentCodeHint(item) {
@@ -1517,7 +1802,16 @@
         }
 
         function linkifyLegalReferences(htmlString, options = {}) {
-            const citationRegex = /\b((?:Artt?\.?\s*\d+(?:\s*-\s*[a-z]+|\s+(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies))?(?:\s*\.\s*\d+)?(?:\s*(?:e|ed|–|-)\s*\d+(?:\s*-\s*[a-z]+|\s+(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies))?(?:\s*\.\s*\d+)?)?(?:,\s*(?:comma|n\.|lett\.)\s*[a-z0-9]+)*(?:\s*(?:c\.c\.|c\.p\.|c\.p\.c\.|c\.p\.p\.|Cost\.|Preleggi|L\.\s*\d+\/\d+|D\.Lgs\.\s*\d+\/\d+|D\.P\.R\.\s*\d+\/\d+|D\.L\.\s*\d+\/\d+))?)|(?:(?:Legge|L\.|D\.Lgs\.|D\.P\.R\.|D\.L\.|R\.D\.)\s*(?:\d{1,2}\s+[a-zàèéìòù]+\s+\d{4},\s*n\.\s*\d+|\d+\/\d{2,4})))(?![a-zA-Z0-9_])/gi;
+            const artSuffix = '(?:\\s*-\\s*[a-z]+|\\s+(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies))?';
+            const artNum = '\\d+' + artSuffix + '(?:\\s*\\.\\s*\\d+)?';
+            const citationRegex = new RegExp(
+                '\\b((?:(?:Articol[oi]|Artt?\\.?)\\s*' + artNum
+                + '(?:\\s*(?:e|ed|–|-)\\s*' + artNum + ')?'
+                + '(?:,\\s*(?:comma|n\\.|lett\\.)\\s*[a-z0-9]+)*'
+                + '(?:\\s*(?:disp\\.?\\s*att\\.?\\s*(?:c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.)|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.|Cost\\.|Preleggi|codice\\s+di\\s+procedura\\s+(?:civile|penale)|codice\\s+(?:civile|penale)|L\\.\\s*\\d+\\/\\d+|D\\.Lgs\\.\\s*\\d+\\/\\d+|D\\.P\\.R\\.\\s*\\d+\\/\\d+|D\\.L\\.\\s*\\d+\\/\\d+))?)'
+                + '|(?:(?:Legge|L\\.|D\\.Lgs\\.|D\\.P\\.R\\.|D\\.L\\.|R\\.D\\.)\\s*(?:\\d{1,2}\\s+[a-zàèéìòù]+\\s+\\d{4},\\s*n\\.\\s*\\d+|\\d+\\/\\d{2,4})))(?![a-zA-Z0-9_])',
+                'gi'
+            );
             const parsed = new DOMParser().parseFromString(String(htmlString || ''), 'text/html');
             const walker = document.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT, {
                 acceptNode(node) {
@@ -1549,36 +1843,34 @@
                         cursor = match.index + match[0].length;
                         return;
                     }
-                    // Se la sigla del codice è immediatamente vicina alla citazione
-                    // (es. "artt. 536 ss. c.c."), la usiamo per evitare la scelta
-                    // manuale tra codici diversi nella finestra di consultazione.
+                    const normalizedCitation = cleanRef.replace(/^articol[oi]\s+/i, 'Art. ');
                     const contextStart = Math.max(0, match.index - 32);
                     const nearbyText = source.slice(contextStart, Math.min(source.length, match.index + match[0].length + 32));
-                    const inferredCode = inferReferenceCodeFromContext(cleanRef, nearbyText, match.index - contextStart, match[0].length);
-                    const actionableRef = inferredCode ? `${cleanRef} ${inferredCode}` : cleanRef;
+                    const inferredCode = inferReferenceCodeFromContext(normalizedCitation, nearbyText, match.index - contextStart, match[0].length);
+                    const hasExplicitAct = /(?:L\.|Legge|D\.Lgs\.|D\.P\.R\.|D\.L\.|R\.D\.|Preleggi|codice\s+)/i.test(normalizedCitation);
+                    const effectiveCode = inferredCode || (!getReferenceCodeHint(normalizedCitation) && !hasExplicitAct && options.defaultCode ? options.defaultCode : '');
+                    const actionableRef = effectiveCode ? `${normalizedCitation} ${effectiveCode}` : normalizedCitation;
                     const urnUrl = buildNormattivaArticleUrn(actionableRef);
                     const localMatch = findLocalArticleMatch(actionableRef);
                     let link;
                     if (localMatch) {
                         link = document.createElement('button'); link.type = 'button';
-                        link.title = `Apri ${cleanRef} nell'archivio locale`;
+                        link.title = `Apri ${actionableRef} nell'archivio locale`;
                         link.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-amber-100 hover:bg-amber-300 text-amber-950 border border-amber-400 font-sans text-xs font-semibold underline decoration-amber-600 underline-offset-2 transition cursor-pointer';
-                        // L'HTML verrà serializzato e reinserito: gli handler
-                        // assegnati via proprietà andrebbero persi nella stringa.
-                        link.setAttribute('onclick', `event.stopPropagation(); openArticleDirectly(${JSON.stringify(actionableRef)})`);
+                        link.setAttribute('data-legal-ref', actionableRef);
                         link.append(document.createTextNode(cleanRef));
                         const icon = document.createElement('i'); icon.className = 'fa-solid fa-book-open text-[9px] text-amber-800'; link.append(icon);
                     } else if (urnUrl) {
                         link = document.createElement('a'); link.href = urnUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
-                        link.title = `Apri ${cleanRef} nel testo vigente su Normattiva`;
+                        link.title = `Apri ${actionableRef} nel testo vigente su Normattiva`;
                         link.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-amber-100 hover:bg-amber-300 text-amber-950 border border-amber-400 font-sans text-xs font-semibold underline decoration-amber-600 underline-offset-2 transition';
                         link.append(document.createTextNode(cleanRef));
                         const icon = document.createElement('i'); icon.className = 'fa-solid fa-arrow-up-right-from-square text-[9px] text-amber-800'; link.append(icon);
                     } else {
                         link = document.createElement('button'); link.type = 'button';
-                        link.title = `Apri le opzioni di consultazione per ${cleanRef}`;
+                        link.title = `Apri le opzioni di consultazione per ${actionableRef}`;
                         link.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-amber-100 hover:bg-amber-300 text-amber-950 border border-amber-400 font-sans text-xs font-semibold underline decoration-amber-600 underline-offset-2 transition cursor-pointer';
-                        link.setAttribute('onclick', `event.stopPropagation(); openArticleDirectly(${JSON.stringify(actionableRef)})`);
+                        link.setAttribute('data-legal-ref', actionableRef);
                         link.append(document.createTextNode(cleanRef));
                         const icon = document.createElement('i'); icon.className = 'fa-solid fa-magnifying-glass text-[9px] text-amber-800'; link.append(icon);
                     }
@@ -1599,10 +1891,11 @@
             ].sort((a, b) => b.length - a.length);
 
         function parseNormattivaArticleReference(reference, requireCode = false) {
-            const prefix = new RegExp('^Artt?\\.?\\s*([0-9]+|[IVXLCDM]+)(?:\\s*-?\\s*(' + normattivaArticleSuffixes.join('|') + '))?(?:\\s*\\.\\s*(\\d+))?' + (requireCode ? '\\s*(c\\.c\\.|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.p\\.|Cost\\.)$' : '(?:\\s*(c\\.c\\.|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.p\\.|Cost\\.))?$'), 'i');
+            const codeGroup = '(disp\\.?\\s*att\\.?\\s*(?:c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.)|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.|Cost\\.|Preleggi)';
+            const prefix = new RegExp('^Artt?\\.?\\s*([0-9]+|[IVXLCDM]+)(?:\\s*-?\\s*(' + normattivaArticleSuffixes.join('|') + '))?(?:\\s*\\.\\s*(\\d+))?' + (requireCode ? '\\s*' + codeGroup + '$' : '(?:\\s*' + codeGroup + ')?$'), 'i');
             const match = String(reference || '').trim().match(prefix);
             if (!match) return null;
-            const code = match[4] ? match[4].toLowerCase() : '';
+            const code = match[4] ? match[4].toLowerCase().replace(/^disp\.?\s*att\.?\s*/i, 'disp. att. ') : '';
             let number = match[1];
             if (/^[IVXLCDM]+$/i.test(number)) {
                 if (code !== 'cost.') return null;
@@ -1630,7 +1923,12 @@
                 'c.p.': 'regio.decreto:1930-10-19;1398:1',
                 'c.p.c.': 'regio.decreto:1940-10-28;1443',
                 'c.p.p.': 'decreto.del.presidente.della.repubblica:1988-09-22;447',
-                'cost.': 'costituzione:1947-12-27'
+                'cost.': 'costituzione:1947-12-27',
+                'disp. att. c.c.': 'regio.decreto:1942-03-30;318',
+                'disp. att. c.p.c.': 'regio.decreto:1941-12-18;1368',
+                'disp. att. c.p.p.': 'decreto.legislativo:1989-07-28;271',
+                'disp. att. c.p.': 'regio.decreto:1931-05-28;601',
+                'preleggi': 'regio.decreto:1942-03-16;262:1'
             };
             const act = actByCode[code];
             if (!act) return '';
@@ -1641,6 +1939,10 @@
         function resolveNormattivaCode(reference) {
             const text = String(reference || '');
             const codePatterns = [
+                [/disp\.?\s*att\.?\s*c\.p\.c\.|disposizioni\s+(?:di|per\s+l['’])\s*attuazione\s+del\s+codice\s+di\s+procedura\s+civile/i, 'disp_att_cpc'],
+                [/disp\.?\s*att\.?\s*c\.p\.p\.|(?:disposizioni|norme)\s+di\s+attuazione\s+del\s+codice\s+di\s+procedura\s+penale/i, 'disp_att_cpp'],
+                [/disp\.?\s*att\.?\s*c\.c\.|disposizioni\s+(?:di|per\s+l['’])\s*attuazione\s+del\s+codice\s+civile/i, 'disp_att_cc'],
+                [/disp\.?\s*att\.?\s*c\.p\.|disposizioni\s+(?:di|per\s+l['’])\s*attuazione\s+del\s+codice\s+penale/i, 'disp_att_cp'],
                 [/codice\s+di\s+procedura\s+civile|c\.p\.c\./i, 'cpc'],
                 [/codice\s+di\s+procedura\s+penale|c\.p\.p\./i, 'cpp'],
                 [/codice\s+civile|c\.c\./i, 'cc'],
@@ -1657,7 +1959,11 @@
                 cp: ['Codice penale', 'regio.decreto:1930-10-19;1398:1'],
                 cpc: ['Codice di procedura civile', 'regio.decreto:1940-10-28;1443'],
                 cpp: ['Codice di procedura penale', 'decreto.del.presidente.della.repubblica:1988-09-22;447'],
-                cost: ['Costituzione', 'costituzione:1947-12-27']
+                cost: ['Costituzione', 'costituzione:1947-12-27'],
+                disp_att_cc: ['Disp. att. c.c.', 'regio.decreto:1942-03-30;318'],
+                disp_att_cpc: ['Disp. att. c.p.c.', 'regio.decreto:1941-12-18;1368'],
+                disp_att_cpp: ['Disp. att. c.p.p.', 'decreto.legislativo:1989-07-28;271'],
+                disp_att_cp: ['Disp. att. c.p.', 'regio.decreto:1931-05-28;601']
             };
             const [label, urn] = codes[found.code];
             return { label, url: `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:${urn}!vig=` };
@@ -1691,6 +1997,110 @@
             }
             return '';
         }
+
+        const KNOWN_NORMATTIVA_ACTS = [
+            { pattern: /\b(?:codice\s+della\s+strada|c\.d\.s\.|d\.?\s*lgs\.?\s*285\/1992|285\/1992)\b/i, label: 'Codice della strada', urn: 'decreto.legislativo:1992-04-30;285' },
+            { pattern: /\b(?:codice\s+del\s+consumo|d\.?\s*lgs\.?\s*206\/2005|206\/2005)\b/i, label: 'Codice del consumo', urn: 'decreto.legislativo:2005-09-06;206' },
+            { pattern: /\b(?:codice\s+dei\s+contratti\s+pubblici|codice\s+(?:degli\s+)?appalti|d\.?\s*lgs\.?\s*36\/2023|36\/2023)\b/i, label: 'Codice dei contratti pubblici', urn: 'decreto.legislativo:2023-03-31;36' },
+            { pattern: /\b(?:procedimento\s+amministrativo|l\.?\s*241\/1990|241\/1990|241\/90)\b/i, label: 'L. 241/1990', urn: 'legge:1990-08-07;241' },
+            { pattern: /\b(?:t\.?u\.?e\.?l\.?|testo\s+unico\s+(?:degli\s+)?enti\s+locali|d\.?\s*lgs\.?\s*267\/2000|267\/2000)\b/i, label: 'TUEL', urn: 'decreto.legislativo:2000-08-18;267' },
+            { pattern: /\b(?:codice\s+del\s+processo\s+amministrativo|d\.?\s*lgs\.?\s*104\/2010|104\/2010)\b/i, label: 'Codice del processo amministrativo', urn: 'decreto.legislativo:2010-07-02;104' },
+            { pattern: /\b(?:statuto\s+dei\s+lavoratori|l\.?\s*300\/1970|300\/1970)\b/i, label: 'Statuto dei lavoratori', urn: 'legge:1970-05-20;300' },
+            { pattern: /\b(?:legge\s*104|l\.?\s*104\/1992|104\/1992)\b/i, label: 'L. 104/1992', urn: 'legge:1992-02-05;104' },
+            { pattern: /\b(?:sicurezza\s+sul\s+lavoro|d\.?\s*lgs\.?\s*81\/2008|81\/2008)\b/i, label: 'T.U. Sicurezza sul lavoro', urn: 'decreto.legislativo:2008-04-09;81' },
+            { pattern: /\b(?:t\.?u\.?p\.?i\.?|pubblico\s+impiego|d\.?\s*lgs\.?\s*165\/2001|165\/2001)\b/i, label: 'TUPI', urn: 'decreto.legislativo:2001-03-30;165' },
+            { pattern: /\b(?:codice\s+(?:della\s+)?privacy|protezione\s+dei\s+dati\s+personali|d\.?\s*lgs\.?\s*196\/2003|196\/2003)\b/i, label: 'Codice della privacy', urn: 'decreto.legislativo:2003-06-30;196' },
+            { pattern: /\b(?:statuto\s+(?:dei\s+diritti\s+)?del\s+contribuente|l\.?\s*212\/2000|212\/2000)\b/i, label: 'Statuto del contribuente', urn: 'legge:2000-07-27;212' },
+            { pattern: /\b(?:t\.?u\.?i\.?r\.?|imposte\s+sui\s+redditi|d\.?\s*p\.?\s*r\.?\s*917\/1986|917\/1986)\b/i, label: 'TUIR', urn: 'decreto.del.presidente.della.repubblica:1986-12-22;917' },
+            { pattern: /\b(?:decreto\s+iva|d\.?\s*p\.?\s*r\.?\s*633\/1972|633\/1972)\b/i, label: 'Decreto IVA', urn: 'decreto.del.presidente.della.repubblica:1972-10-26;633' },
+            { pattern: /\b(?:testo\s+unico\s+(?:dell['’])?\s*edilizia|d\.?\s*p\.?\s*r\.?\s*380\/2001|380\/2001)\b/i, label: 'T.U. Edilizia', urn: 'decreto.del.presidente.della.repubblica:2001-06-06;380' },
+            { pattern: /\b(?:codice\s+dell['’]ambiente|testo\s+unico\s+ambientale|d\.?\s*lgs\.?\s*152\/2006|152\/2006)\b/i, label: 'Codice dell’ambiente', urn: 'decreto.legislativo:2006-04-03;152' },
+            { pattern: /\b(?:codice\s+della\s+crisi\s+d['’]impresa|d\.?\s*lgs\.?\s*14\/2019|14\/2019)\b/i, label: 'Codice della crisi d’impresa', urn: 'decreto.legislativo:2019-01-12;14' },
+            { pattern: /\b(?:t\.?u\.?\s*immigrazione|testo\s+unico\s+immigrazione|d\.?\s*lgs\.?\s*286\/1998|286\/1998)\b/i, label: 'T.U. Immigrazione', urn: 'decreto.legislativo:1998-07-25;286' },
+            { pattern: /\b(?:t\.?u\.?b\.?|testo\s+unico\s+bancario|d\.?\s*lgs\.?\s*385\/1993|385\/1993)\b/i, label: 'TUB', urn: 'decreto.legislativo:1993-09-01;385' },
+            { pattern: /\b(?:t\.?u\.?f\.?|testo\s+unico\s+(?:della\s+)?finanza|d\.?\s*lgs\.?\s*58\/1998|58\/1998)\b/i, label: 'TUF', urn: 'decreto.legislativo:1998-02-24;58' },
+            { pattern: /\b(?:responsabilit[aà]\s+amministrativa\s+degli\s+enti|d\.?\s*lgs\.?\s*231\/2001|231\/2001)\b/i, label: 'D.Lgs. 231/2001', urn: 'decreto.legislativo:2001-06-08;231' },
+            { pattern: /\b(?:legge\s+sul\s+divorzio|l\.?\s*898\/1970|898\/1970)\b/i, label: 'Legge sul divorzio', urn: 'legge:1970-12-01;898' },
+            { pattern: /\b(?:codice\s+delle\s+assicurazioni|d\.?\s*lgs\.?\s*209\/2005|209\/2005)\b/i, label: 'Codice delle assicurazioni', urn: 'decreto.legislativo:2005-09-07;209' },
+            { pattern: /\b(?:codice\s+dell['’]amministrazione\s+digitale|d\.?\s*lgs\.?\s*82\/2005|82\/2005)\b/i, label: 'CAD', urn: 'decreto.legislativo:2005-03-07;82' },
+            { pattern: /\b(?:codice\s+dei\s+beni\s+culturali|d\.?\s*lgs\.?\s*42\/2004|42\/2004)\b/i, label: 'Codice dei beni culturali', urn: 'decreto.legislativo:2004-01-22;42' },
+            { pattern: /\b(?:codice\s+della\s+navigazione|r\.?\s*d\.?\s*327\/1942|327\/1942)\b/i, label: 'Codice della navigazione', urn: 'regio.decreto:1942-03-30;327' },
+            { pattern: /\b(?:locazioni\s+abitative|l\.?\s*431\/1998|431\/1998)\b/i, label: 'L. 431/1998', urn: 'legge:1998-12-09;431' },
+            { pattern: /\b(?:equo\s+canone|l\.?\s*392\/1978|392\/1978)\b/i, label: 'L. 392/1978', urn: 'legge:1978-07-27;392' },
+            { pattern: /\b(?:unioni\s+civili|legge\s+cirinn[aà]|l\.?\s*76\/2016|76\/2016)\b/i, label: 'L. 76/2016', urn: 'legge:2016-05-20;76' },
+            { pattern: /\b(?:codice\s+antimafia|d\.?\s*lgs\.?\s*159\/2011|159\/2011)\b/i, label: 'Codice antimafia', urn: 'decreto.legislativo:2011-09-06;159' },
+            { pattern: /\b(?:propriet[aà]\s+industriale|d\.?\s*lgs\.?\s*30\/2005|30\/2005)\b/i, label: 'Codice della proprietà industriale', urn: 'decreto.legislativo:2005-02-10;30' }
+        ];
+
+        function resolveNormattivaKnownAct(value) {
+            const text = String(value || '');
+            const found = KNOWN_NORMATTIVA_ACTS.find(entry => entry.pattern.test(text));
+            return found ? { label: found.label, urn: found.urn, url: `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:${found.urn}!vig=` } : null;
+        }
+
+        function resolveDocumentNormattivaUrls(item, sourceFallback = '') {
+            const source = String(item?.source || sourceFallback || '').trim();
+            const articleRaw = String(item?.article || '').trim();
+            const suffixByHint = { cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.', disp_att_cc: 'disp. att. c.c.', disp_att_cpc: 'disp. att. c.p.c.', disp_att_cpp: 'disp. att. c.p.p.', disp_att_cp: 'disp. att. c.p.' };
+            const hint = getDocumentCodeHint(item);
+            const suffix = suffixByHint[hint] || '';
+            const hasSuffix = /(?:\bdisp\.?\s*att\.?|\bPreleggi\b|\bc\.c\.|\bc\.p\.c\.|\bc\.p\.p\.|\bc\.p\.|\bCost\.)\s*$/i.test(articleRaw);
+            const reference = [articleRaw, hasSuffix ? '' : suffix].filter(Boolean).join(' ');
+            const parsedArt = parseNormattivaArticleReference(articleRaw, false) || parseNormattivaArticleReference(reference, false);
+            const artSlug = parsedArt ? (parsedArt.number + parsedArt.suffix + (parsedArt.extension ? '.' + parsedArt.extension : '')) : '';
+
+            // 1. URN Normattiva già presente sull'articolo (es. importato da dati.normattiva.it JSON)
+            const storedUrl = String(item?.externalUrl || '').trim();
+            if (/^https:\/\/www\.normattiva\.it\/uri-res\/N2Ls\?urn:nir:/i.test(storedUrl)) {
+                const hasArt = /~art/i.test(storedUrl);
+                const actUrl = storedUrl.replace(/~art[^!#]*/i, '');
+                const articleUrl = hasArt ? storedUrl : (artSlug ? actUrl.replace(/(!vig=|$)/i, `~art${artSlug}$1`) : storedUrl);
+                return { reference, articleUrl, actUrl, kind: /~art/i.test(articleUrl) ? 'article' : 'act' };
+            }
+
+            // 2. Codici principali, Costituzione, Preleggi e Disp. att.
+            const directUrn = buildNormattivaArticleUrn(reference);
+            if (directUrn && /urn:nir:/i.test(directUrn)) {
+                const actUrl = directUrn.replace(/~art[^!#]*/i, '');
+                return { reference, articleUrl: directUrn, actUrl, kind: /~art/i.test(directUrn) ? 'article' : 'act' };
+            }
+
+            // 3. Codici di settore e leggi note (es. Codice della strada, L. 241/1990, TUEL, ecc.)
+            const knownAct = resolveNormattivaKnownAct([source, item?.title || ''].join(' '));
+            if (knownAct) {
+                const articleUrl = artSlug
+                    ? `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:${knownAct.urn}~art${artSlug}!vig=`
+                    : knownAct.url;
+                return { reference, articleUrl, actUrl: knownAct.url, kind: artSlug ? 'article' : 'act' };
+            }
+
+            // 4. Estremi completi con data nella fonte o nel titolo (es. "Legge 7 agosto 1990, n. 241")
+            const actFromSource = buildNormattivaActUrl(source) || buildNormattivaActUrl(item?.title || '');
+            if (actFromSource) {
+                const actUrl = actFromSource.replace(/~art[^!#]*/i, '');
+                const articleUrl = (!/~art/i.test(actFromSource) && artSlug)
+                    ? actUrl.replace(/(!vig=|$)/i, `~art${artSlug}$1`)
+                    : actFromSource;
+                return { reference, articleUrl, actUrl, kind: /~art/i.test(articleUrl) ? 'article' : 'act' };
+            }
+
+            // 5. Codice rilevato dal nome della fonte senza numero articolo riconosciuto
+            const codeOnly = resolveNormattivaCode(source);
+            if (codeOnly?.url) {
+                const articleUrl = artSlug ? codeOnly.url.replace(/(!vig=|$)/i, `~art${artSlug}$1`) : codeOnly.url;
+                return { reference, articleUrl, actUrl: codeOnly.url, kind: artSlug ? 'article' : 'act' };
+            }
+
+            // 6. Ripiego: ricerca mirata su Normattiva via Google per evitare pagina vuota
+            const fallbackQuery = ['site:normattiva.it', source ? `"${source}"` : '', articleRaw ? `"${articleRaw}"` : ''].filter(Boolean).join(' ');
+            return {
+                reference,
+                articleUrl: fallbackQuery !== 'site:normattiva.it' ? `https://www.google.com/search?q=${encodeURIComponent(fallbackQuery)}` : 'https://www.normattiva.it/ricerca/avanzata',
+                actUrl: '',
+                kind: 'search'
+            };
+        }
+
 
         function openArticleDirectly(ref) {
             const lower = String(ref || '').trim().toLowerCase();
@@ -1738,6 +2148,11 @@
                 bmBtn.innerHTML = `<i class="fa-solid fa-xmark text-amber-400"></i> Chiudi`;
                 bmBtn.onclick = () => closeDetailModal();
 
+                const bc = document.getElementById('modal-breadcrumb');
+                if (bc) { bc.textContent = ''; bc.classList.add('hidden'); }
+                const sb = document.getElementById('modal-status-badges');
+                if (sb) { sb.innerHTML = '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">Estratto locale</span>'; }
+                updateModalArticleNavigation(null);
                 showLayer('detail-modal');
                 return;
             }
@@ -1808,11 +2223,16 @@
             bmBtn.innerHTML = `<i class="fa-solid fa-xmark text-amber-400"></i> Chiudi`;
             bmBtn.onclick = () => closeDetailModal();
 
+            const bc = document.getElementById('modal-breadcrumb');
+            if (bc) { bc.textContent = ''; bc.classList.add('hidden'); }
+            const sb = document.getElementById('modal-status-badges');
+            if (sb) { sb.innerHTML = ''; }
+            updateModalArticleNavigation(null);
             showLayer('detail-modal');
         }
 
-        function buildBrocardiFallbackSearchUrl(ref, articleTitle = '') {
-            const codeLabel = { cc: 'codice civile', cp: 'codice penale', cpc: 'codice di procedura civile', cpp: 'codice di procedura penale', cost: 'costituzione' }[getReferenceCodeHint(ref)] || '';
+        function buildBrocardiFallbackSearchUrl(ref, articleTitle = '', sourceHint = '') {
+            const codeLabel = { cc: 'codice civile', cp: 'codice penale', cpc: 'codice di procedura civile', cpp: 'codice di procedura penale', cost: 'costituzione', disp_att_cc: 'disposizioni attuazione codice civile', disp_att_cpc: 'disposizioni attuazione codice procedura civile', disp_att_cpp: 'disposizioni attuazione codice procedura penale', disp_att_cp: 'disposizioni attuazione codice penale' }[getReferenceCodeHint(ref)] || String(sourceHint || '').replace(/\b\d{1,2}[-/]\d{1,2}[-/]20\d{2}\b/g, '').replace(/\b20\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
             const article = String(ref || '').match(/\bArt(?:t)?\.?\s*(\d+(?:\s*-\s*[a-z]+)?(?:\s*\.\s*\d+)?)/i)?.[1]?.replace(/\s+/g, '');
             const title = String(articleTitle || '').replace(/^\s*Art(?:icolo)?\.?\s*[\d\s.-]+(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies)?\s*[-.:—–]*\s*/i, '').replace(/\s+/g, ' ').trim();
             const query = ['site:brocardi.it', article ? `"Art. ${article}"` : `"${String(ref || '').trim()}"`, codeLabel ? `"${codeLabel}"` : '', title ? `"${title}"` : ''].filter(Boolean).join(' ');
@@ -1822,6 +2242,7 @@
         function getDirectLegalUrl(ref, articleTitle = '') {
             const lower = String(ref || '').toLowerCase();
             const has = pattern => pattern.test(lower);
+            if (getReferenceCodeHint(ref).startsWith('disp_att_')) return buildBrocardiFallbackSearchUrl(ref, articleTitle);
             // Brocardi ha una pagina articolo diretta per l'art. 536 c.c.;
             // gestiamo anche il riferimento "artt. 536 ss. c.c." senza ricerca generica.
             if (/^artt?\.?\s*536(?:\s*ss\.?)?\s*c\.c\.?$/i.test(String(ref || '').trim())) {
@@ -1900,6 +2321,11 @@
             bmBtn.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square text-amber-400"></i> ${escapeHtml(getBrocardiButtonLabel(guide.norms, targetUrl, guide.brocardiSlug ? guide.title : ''))}`;
             bmBtn.onclick = () => window.open(targetUrl, "_blank", "noopener,noreferrer");
 
+            const bc = document.getElementById('modal-breadcrumb');
+            if (bc) { bc.textContent = ''; bc.classList.add('hidden'); }
+            const sb = document.getElementById('modal-status-badges');
+            if (sb) { sb.innerHTML = '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">Prontuario rapido</span>'; }
+            updateModalArticleNavigation(null);
             showLayer('detail-modal');
         }
 
@@ -1913,20 +2339,33 @@
 
             document.getElementById("modal-badge").textContent = `${item.article} • ${item.categoryLabel}`;
             document.getElementById("modal-title").textContent = item.title;
+            const bcEl = document.getElementById('modal-breadcrumb');
+            if (bcEl) {
+                if (item.sectionPath) {
+                    bcEl.textContent = item.sectionPath;
+                    bcEl.classList.remove('hidden');
+                } else {
+                    bcEl.textContent = '';
+                    bcEl.classList.add('hidden');
+                }
+            }
+            const statusBadgesEl = document.getElementById('modal-status-badges');
+            if (statusBadgesEl) statusBadgesEl.innerHTML = renderStatusBadgesHtml(item);
+            updateModalArticleNavigation(item);
             currentAiArticle = item;
             const parsedBody = new DOMParser().parseFromString(sanitizeImportedHtml(item.fullText || ''), 'text/html');
             const normalizeTitle = value => normalizeSearchText(value).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
             const expectedTitle = normalizeTitle(item.title);
             while (expectedTitle && parsedBody.body.firstElementChild && ['H1', 'H2', 'H3', 'P'].includes(parsedBody.body.firstElementChild.tagName) && normalizeTitle(parsedBody.body.firstElementChild.textContent) === expectedTitle) parsedBody.body.firstElementChild.remove();
-            const codeSuffix = { cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.' }[getDocumentCodeHint(item)] || '';
-            const articleAlreadyHasCode = /(?:\bc\.c\.|\bc\.p\.c\.|\bc\.p\.p\.|\bc\.p\.|\bCost\.)\s*$/i.test(String(item.article || ''));
-            const articleReference = [item.article, articleAlreadyHasCode ? '' : codeSuffix].filter(Boolean).join(' ');
-            const articleNormattivaUrl = buildNormattivaArticleUrn(articleReference) || 'https://www.normattiva.it/ricerca/avanzata';
-            const articleBrocardiUrl = getDirectLegalUrl(articleReference || item.article, item.title);
+            const codeSuffix = { cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.', disp_att_cc: 'disp. att. c.c.', disp_att_cpc: 'disp. att. c.p.c.', disp_att_cpp: 'disp. att. c.p.p.', disp_att_cp: 'disp. att. c.p.' }[getDocumentCodeHint(item)] || '';
+            const resolvedNorm = resolveDocumentNormattivaUrls(item);
+            const articleReference = resolvedNorm.reference;
+            const articleNormattivaUrl = resolvedNorm.articleUrl || 'https://www.normattiva.it/ricerca/avanzata';
+            const articleBrocardiUrl = codeSuffix ? getDirectLegalUrl(articleReference || item.article, item.title) : buildBrocardiFallbackSearchUrl(articleReference || item.article, item.title, item.source);
             const articleNormattivaLabel = getNormattivaButtonLabel(articleReference, articleNormattivaUrl);
             const articleBrocardiLabel = getBrocardiButtonLabel(articleReference || item.article, articleBrocardiUrl);
             const modalBody = document.getElementById("modal-body");
-            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML)}</div><section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(buildNormattivaArticleUrn(articleReference) ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference)}${buildNormattivaArticleUrn(articleReference) ? '' : renderNormattivaSearchHint(articleReference)}</section><section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle()" class="px-3 py-2 rounded-lg bg-violet-700 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega / Schematizza</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; disponibilità, limiti gratuiti ed eventuali costi dipendono dal piano e dal modello." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
+            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix })}</div><section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(buildNormattivaArticleUrn(articleReference) ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference)}${buildNormattivaArticleUrn(articleReference) ? '' : renderNormattivaSearchHint(articleReference)}</section><section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle()" class="px-3 py-2 rounded-lg bg-violet-700 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega / Schematizza</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; disponibilità, limiti gratuiti ed eventuali costi dipendono dal piano e dal modello." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
             modalBody.querySelector('[data-copy-search]')?.addEventListener('click', () => copyTextFallback(articleReference));
             document.getElementById("modal-meta").textContent = `Riferimenti: ${item.source}`;
 
@@ -2478,24 +2917,68 @@
             const map = list => new Map(list.map(item => [normalizeArticleIdentifier(item.article) || normalizeSearchText(item.article).replace(/[^a-z0-9-]/g, ''), item]));
             const am = map(a), bm = map(b); const keys = [...new Set([...am.keys(), ...bm.keys()])];
             const compactText = item => plainOriginalDocumentText(item).replace(/\s+/g, ' ').trim();
+            const extractParagraphs = item => {
+                if (!item) return [];
+                const parsed = new DOMParser().parseFromString(sanitizeImportedHtml(item.fullText || ''), 'text/html');
+                const blocks = [...parsed.body.querySelectorAll('p, li')].map(el => (el.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+                if (blocks.length) return blocks;
+                return plainOriginalDocumentText(item).split(/\n+/).map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+            };
             const changes = keys.map(key => ({ old: am.get(key), fresh: bm.get(key) })).filter(row => !row.old || !row.fresh || compactText(row.old) !== compactText(row.fresh));
             const out = document.getElementById('compare-output'); out.replaceChildren();
             if (!changes.length) { out.textContent = 'Nessuna differenza testuale rilevata tra le due versioni.'; return; }
             const header = document.createElement('p'); header.className = 'font-semibold text-slate-800';
-            header.textContent = `Differenze testuali locali: ${changes.length}. Le parti rimosse sono rosse; quelle aggiunte sono verdi.`; out.append(header);
+            header.textContent = `Differenze testuali locali (confronto per commi): ${changes.length}. Le parti rimosse sono rosse; quelle aggiunte sono verdi.`; out.append(header);
             const legend = document.createElement('p'); legend.className = 'text-xs text-slate-600'; legend.innerHTML = '<del class="rounded bg-rose-100 px-1 text-rose-900">Rimosso dalla versione nuova</del> <ins class="rounded bg-emerald-100 px-1 text-emerald-900 no-underline">Aggiunto o modificato nella versione nuova</ins>'; out.append(legend);
             changes.slice(0, 50).forEach(row => {
-                const oldText = row.old ? compactText(row.old).slice(0, 3500) : '[articolo assente nella versione precedente]';
-                const newText = row.fresh ? compactText(row.fresh).slice(0, 3500) : '[articolo assente nella nuova versione]';
+                const oldParas = row.old ? extractParagraphs(row.old) : ['[articolo assente nella versione precedente]'];
+                const newParas = row.fresh ? extractParagraphs(row.fresh) : ['[articolo assente nella nuova versione]'];
                 const details = document.createElement('details'); details.className = 'rounded-lg border border-slate-200 bg-white';
                 const summary = document.createElement('summary'); summary.className = 'cursor-pointer px-3 py-2 text-sm font-semibold text-slate-800'; summary.textContent = row.fresh?.article || row.old?.article || 'Articolo';
-                const diff = document.createElement('div'); diff.className = 'whitespace-pre-wrap break-words p-3 text-xs leading-relaxed text-slate-800';
-                diff.innerHTML = renderComparisonWordDiff(oldText, newText);
+                const diff = document.createElement('div'); diff.className = 'space-y-2 break-words p-3 text-xs leading-relaxed text-slate-800';
+                diff.innerHTML = renderComparisonParagraphDiff(oldParas, newParas);
                 details.append(summary, diff); out.append(details);
             });
             if (changes.length > 50) { const note = document.createElement('p'); note.className = 'text-xs text-slate-600'; note.textContent = `Sono mostrate le prime 50 differenze su ${changes.length}.`; out.append(note); }
             const aiButton = document.createElement('button'); aiButton.type = 'button'; aiButton.className = 'rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white'; aiButton.textContent = 'Spiega le differenze con Gemini'; aiButton.onclick = () => summarizeImportedVersionDiff(changes, out); out.append(aiButton);
             const aiOutput = document.createElement('div'); aiOutput.id = 'compare-ai-summary'; aiOutput.className = 'whitespace-pre-wrap rounded-lg bg-violet-50 p-3 text-sm text-slate-800'; out.append(aiOutput);
+        }
+        function renderComparisonParagraphDiff(oldParas, newParas) {
+            const a = Array.isArray(oldParas) ? oldParas : [];
+            const b = Array.isArray(newParas) ? newParas : [];
+            const rows = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1));
+            for (let i = a.length - 1; i >= 0; i--) {
+                for (let j = b.length - 1; j >= 0; j--) {
+                    rows[i][j] = a[i] === b[j] ? rows[i + 1][j + 1] + 1 : Math.max(rows[i + 1][j], rows[i][j + 1]);
+                }
+            }
+            const blocks = [];
+            let i = 0, j = 0;
+            while (i < a.length && j < b.length) {
+                if (a[i] === b[j]) {
+                    blocks.push('<p class="text-slate-600">' + escapeHtml(a[i]) + '</p>');
+                    i++; j++;
+                } else {
+                    const rem = [], add = [];
+                    while (i < a.length && j < b.length && a[i] !== b[j]) {
+                        if (rows[i + 1][j] >= rows[i][j + 1]) rem.push(a[i++]);
+                        else add.push(b[j++]);
+                    }
+                    const paired = Math.min(rem.length, add.length);
+                    for (let p = 0; p < paired; p++) {
+                        blocks.push('<p class="rounded-md bg-slate-50 p-2 border border-slate-200">' + renderComparisonWordDiff(rem[p], add[p]) + '</p>');
+                    }
+                    for (let p = paired; p < rem.length; p++) {
+                        blocks.push('<p class="rounded-md bg-rose-50 p-2 border border-rose-200"><del class="text-rose-900">' + escapeHtml(rem[p]) + '</del></p>');
+                    }
+                    for (let p = paired; p < add.length; p++) {
+                        blocks.push('<p class="rounded-md bg-emerald-50 p-2 border border-emerald-200"><ins class="text-emerald-900 no-underline">' + escapeHtml(add[p]) + '</ins></p>');
+                    }
+                }
+            }
+            while (i < a.length) blocks.push('<p class="rounded-md bg-rose-50 p-2 border border-rose-200"><del class="text-rose-900">' + escapeHtml(a[i++]) + '</del></p>');
+            while (j < b.length) blocks.push('<p class="rounded-md bg-emerald-50 p-2 border border-emerald-200"><ins class="text-emerald-900 no-underline">' + escapeHtml(b[j++]) + '</ins></p>');
+            return blocks.join('');
         }
         function renderComparisonWordDiff(oldText, newText) {
             const oldTokens = String(oldText).match(/\s+|[^\s]+/g) || [];
@@ -2547,10 +3030,16 @@
 
         function clearAllBookmarks() {
             bookmarks = [];
+            bookmarkNotes = {};
             saveBookmarks();
+            saveBookmarkNotes();
             updateBookmarkUI();
             renderResults();
             showToast("Segnalibri svuotati");
+        }
+        function filterBookmarksList(value) {
+            bookmarkFilterQuery = String(value || '').trim().toLowerCase();
+            updateBookmarkUI();
         }
 
         function updateBookmarkUI() {
@@ -2562,23 +3051,49 @@
                 list.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">Nessuna norma salvata. Clicca sull'icona segnalibro accanto a un risultato per conservarlo qui.</p>`;
                 return;
             }
-            list.innerHTML = bookmarks.map(id => {
-                const item = getAllDocuments().find(d => d.id === id);
-                if (!item) return "";
+            const docsById = new Map(getAllDocuments().map(d => [d.id, d]));
+            const filteredIds = bookmarks.filter(id => {
+                const item = docsById.get(id);
+                if (!item) return false;
+                if (!bookmarkFilterQuery) return true;
+                const note = bookmarkNotes[id] || '';
+                return [item.article, item.title, item.source, note].join(' ').toLowerCase().includes(bookmarkFilterQuery);
+            });
+            if (!filteredIds.length) {
+                list.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">Nessun segnalibro corrisponde al filtro.</p>`;
+                return;
+            }
+            list.innerHTML = filteredIds.map(id => {
+                const item = docsById.get(id);
+                const noteVal = bookmarkNotes[id] || '';
                 return `
-                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-2">
-                    <div class="cursor-pointer flex-1" data-bookmark-open="${escapeHtml(item.id)}">
-                        <span class="text-[11px] font-bold text-amber-700">${escapeHtml(item.article)}</span>
-                        <h5 class="text-xs font-bold text-slate-800 mt-0.5">${escapeHtml(item.title)}</h5>
-                        <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(item.source)}</p>
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="cursor-pointer flex-1 min-w-0" data-bookmark-open="${escapeHtml(item.id)}">
+                            <span class="text-[11px] font-bold text-amber-700">${escapeHtml(item.article)}</span>
+                            <h5 class="text-xs font-bold text-slate-800 mt-0.5">${escapeHtml(item.title)}</h5>
+                            <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(item.source)}</p>
+                        </div>
+                        <button type="button" data-bookmark-remove="${escapeHtml(item.id)}" class="text-slate-400 hover:text-rose-600 p-1 shrink-0" title="Rimuovi">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
                     </div>
-                    <button type="button" data-bookmark-remove="${escapeHtml(item.id)}" class="text-slate-400 hover:text-rose-600 p-1" title="Rimuovi">
-                        <i class="fa-solid fa-trash-can text-xs"></i>
-                    </button>
+                    <div class="flex items-center gap-1.5">
+                        <input type="text" value="${escapeHtml(noteVal)}" data-bookmark-note-input="${escapeHtml(item.id)}" placeholder="Nota personale / fascicolo…" class="flex-1 text-[11px] bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-amber-500">
+                        <button type="button" data-bookmark-note-save="${escapeHtml(item.id)}" class="px-2.5 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-[11px] font-semibold shrink-0" title="Salva nota">Salva</button>
+                    </div>
                 </div>`;
             }).join("");
             list.querySelectorAll('[data-bookmark-open]').forEach(el => el.addEventListener('click', () => { toggleBookmarksDrawer(); openDetailModal(el.dataset.bookmarkOpen); }));
             list.querySelectorAll('[data-bookmark-remove]').forEach(button => button.addEventListener('click', () => toggleBookmark(button.dataset.bookmarkRemove)));
+            list.querySelectorAll('[data-bookmark-note-save]').forEach(button => button.addEventListener('click', () => {
+                const id = button.dataset.bookmarkNoteSave;
+                const input = list.querySelector(`[data-bookmark-note-input="${CSS.escape(id)}"]`);
+                if (input) updateBookmarkNote(id, input.value);
+            }));
+            list.querySelectorAll('[data-bookmark-note-input]').forEach(input => input.addEventListener('keydown', ev => {
+                if (ev.key === 'Enter') { ev.preventDefault(); updateBookmarkNote(input.dataset.bookmarkNoteInput, input.value); }
+            }));
         }
 
         async function toggleBookmarksDrawer() {
@@ -2678,22 +3193,36 @@
                 if (!groups.size) {
                     const empty = document.createElement('p'); empty.className = 'text-sm text-slate-600'; empty.textContent = 'Non ci sono codici importati da verificare. Importa un codice e riapri questa sezione.'; output.append(empty); return;
                 }
-                const suffixByHint = { cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.' };
                 for (const [source, docs] of groups) {
-                    const sample = docs.find(doc => /^art(?:icolo)?\.?\s*\d/i.test(String(doc.article || ''))) || docs[0];
-                    const suffix = suffixByHint[getDocumentCodeHint(sample)] || '';
-                    const hasSuffix = /(?:\bc\.c\.|\bc\.p\.c\.|\bc\.p\.p\.|\bc\.p\.|\bCost\.)\s*$/i.test(String(sample.article || ''));
-                    const reference = [sample.article, hasSuffix ? '' : suffix].filter(Boolean).join(' ');
-                    const normUrl = buildNormattivaArticleUrn(reference) || buildNormattivaActUrl(source) || 'https://www.normattiva.it/ricerca/avanzata';
-                    const brocardiUrl = getDirectLegalUrl(reference, sample.title);
+                    const sample = docs.find(doc => /^art(?:icolo)?\.?\s*\d/i.test(String(doc.article || '')) && !/preleggi/i.test(String(doc.article || '')))
+                        || docs.find(doc => /^art(?:icolo)?\.?\s*\d/i.test(String(doc.article || '')))
+                        || docs[0];
+                    const resolved = resolveDocumentNormattivaUrls(sample, source);
+                    const reference = resolved.reference || sample.article || sample.title;
+                    const normUrl = resolved.articleUrl;
+                    const actUrl = resolved.actUrl && resolved.actUrl !== normUrl ? resolved.actUrl : '';
+                    const hasCodeHint = Boolean(getDocumentCodeHint(sample));
+                    const brocardiUrl = hasCodeHint
+                        ? getDirectLegalUrl(reference, sample.title)
+                        : buildBrocardiFallbackSearchUrl(reference, sample.title, source);
                     const row = document.createElement('article'); row.className = 'rounded-xl border border-slate-200 p-3';
                     const title = document.createElement('h3'); title.className = 'font-semibold text-sm text-slate-900'; title.textContent = source;
-                    const info = document.createElement('p'); info.className = 'mt-1 text-xs text-slate-600'; info.textContent = `${docs.length.toLocaleString('it-IT')} articoli · campione: ${reference || sample.article || sample.title}`;
+                    const info = document.createElement('p'); info.className = 'mt-1 text-xs text-slate-600'; info.textContent = `${docs.length.toLocaleString('it-IT')} articoli · campione: ${reference}`;
                     const links = document.createElement('div'); links.className = 'mt-3 flex flex-wrap gap-2';
-                    [[`Normattiva · ${buildNormattivaArticleUrn(reference) ? 'articolo' : normUrl.includes('/ricerca/avanzata') ? 'ricerca generale' : 'atto'}`, normUrl], ['Brocardi · confronto/ricerca', brocardiUrl]].forEach(([label, url]) => {
+                    const primaryNormLabel = resolved.kind === 'article'
+                        ? `Normattiva · ${shortenLegalLabel(sample.article || reference, 22)} (vigente)`
+                        : resolved.kind === 'act'
+                            ? 'Normattiva · intero atto (vigente)'
+                            : 'Normattiva · ricerca mirata (Google)';
+                    const btnSpecs = [[primaryNormLabel, normUrl]];
+                    if (actUrl) btnSpecs.push(['Normattiva · intero codice/legge', actUrl]);
+                    btnSpecs.push([`Brocardi · ${shortenLegalLabel(sample.article || reference, 22)}`, brocardiUrl]);
+                    btnSpecs.forEach(([label, url]) => {
                         const link = document.createElement('a'); link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.className = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50'; link.textContent = `Apri ${label}`; links.append(link);
                     });
-                    const note = document.createElement('p'); note.className = 'mt-2 text-[11px] text-amber-800'; note.textContent = 'Dopo l’apertura, controlla manualmente che il portale mostri l’articolo atteso. L’app genera il link, ma non può leggere né certificare la pagina esterna.';
+                    const note = document.createElement('p'); note.className = 'mt-2 text-[11px] text-amber-800'; note.textContent = resolved.kind === 'search'
+                        ? 'URN ufficiale non deducibile dal solo nome della fonte: il link avvia una ricerca mirata. Per link URN diretti importa il JSON da dati.normattiva.it o indica gli estremi completi dell’atto.'
+                        : 'Dopo l’apertura, controlla manualmente che il portale mostri l’articolo atteso. L’app genera il link, ma non può leggere né certificare la pagina esterna.';
                     row.append(title, info, links, note); output.append(row);
                 }
             } catch (error) {
@@ -2926,20 +3455,39 @@
                 && (Array.isArray(data.articolato?.elementi) || Array.isArray(data.annessi?.elementi))
             );
         }
-        function collectNormattivaTextNodes(node, out) {
+        function cleanNormattivaHierarchyLabel(value) {
+            const cleaned = String(value || '').replace(/\(\(|\)\)/g, '').replace(/\s+/g, ' ').trim();
+            return (!cleaned || /^-+$/.test(cleaned)) ? '' : cleaned;
+        }
+        function collectNormattivaTextNodes(node, out, hierarchyState = ['', '', '', '', '', '']) {
             if (!node) return;
-            if (Array.isArray(node)) { node.forEach(item => collectNormattivaTextNodes(item, out)); return; }
+            if (Array.isArray(node)) { node.forEach(item => collectNormattivaTextNodes(item, out, hierarchyState)); return; }
             if (typeof node !== 'object') return;
-            if (typeof node.testo === 'string' && node.testo.trim()) out.push(node);
-            if (Array.isArray(node.elementi)) node.elementi.forEach(child => collectNormattivaTextNodes(child, out));
+            const hasText = typeof node.testo === 'string' && node.testo.trim().length > 0;
+            if (!hasText && typeof node.numNir === 'string' && node.numNir.includes('*')) {
+                const rawParts = node.numNir.split('*');
+                const maxLevels = Math.min(6, Math.ceil(rawParts.length / 2));
+                for (let lvl = 0; lvl < maxLevels; lvl++) {
+                    const head = cleanNormattivaHierarchyLabel(rawParts[2 * lvl]);
+                    const sub = cleanNormattivaHierarchyLabel(rawParts[2 * lvl + 1]);
+                    if (head) {
+                        if (lvl === 1 && /^LIBRO\b/i.test(head)) hierarchyState[0] = '';
+                        hierarchyState[lvl] = sub ? (head + ' — ' + sub) : head;
+                        for (let deeper = lvl + 1; deeper < hierarchyState.length; deeper++) hierarchyState[deeper] = '';
+                    }
+                }
+            }
+            if (hasText) {
+                const sectionPath = hierarchyState.filter(Boolean).join(' › ');
+                out.push({ node, sectionPath });
+            }
+            if (Array.isArray(node.elementi)) node.elementi.forEach(child => collectNormattivaTextNodes(child, out, hierarchyState));
         }
         function parseNormattivaOpenDataJson(data, fallbackSource, selectedCategory) {
             const articolatoNodes = [];
             const annessiNodes = [];
-            collectNormattivaTextNodes(data.articolato?.elementi, articolatoNodes);
-            collectNormattivaTextNodes(data.annessi?.elementi, annessiNodes);
-            // Nei Codici approvati con R.D. o D.P.R. (es. Codice Civile, Codice Penale),
-            // l'articolato contiene solo 1-2 articoli di approvazione mentre il Codice e negli annessi.
+            collectNormattivaTextNodes(data.articolato?.elementi, articolatoNodes, ['', '', '', '', '', '']);
+            collectNormattivaTextNodes(data.annessi?.elementi, annessiNodes, ['', '', '', '', '', '']);
             const nodes = (annessiNodes.length >= 20 && articolatoNodes.length <= 5)
                 ? annessiNodes
                 : [...articolatoNodes, ...annessiNodes];
@@ -2948,20 +3496,26 @@
             const catLabel = CATEGORY_LABELS[cat] || 'I Miei Codici (Importati)';
             const source = String(fallbackSource || data.metadati?.titoloDoc || 'Codice Normattiva').replace(/\s+/g, ' ').trim();
             const baseUrn = String(data.metadati?.urn || '').trim();
-            const externalUrl = baseUrn
-                ? 'https://www.normattiva.it/uri-res/N2Ls?' + baseUrn + '!vig='
-                : 'https://www.normattiva.it/';
+            const eliStr = String(data.metadati?.eli || '');
+            const eliMatch = eliStr.match(/\/CONSOLIDATED\/(\d{4})(\d{2})(\d{2})/i);
+            const vigenzaDate = eliMatch ? `${eliMatch[3]}/${eliMatch[2]}/${eliMatch[1]}` : '';
             const suffixRe = /\s+(?=(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies)\b)/gi;
 
-            return nodes.map((node, index) => {
+            const docDispHint = getReferenceCodeHint([source, data.metadati?.titoloDoc || ''].join(' '));
+            const dispAttSuffixByHint = { disp_att_cc: ' disp. att. c.c.', disp_att_cpc: ' disp. att. c.p.c.', disp_att_cpp: ' disp. att. c.p.p.', disp_att_cp: ' disp. att. c.p.' };
+            return nodes.map(({ node, sectionPath }, index) => {
                 const rawNum = String(node.numNir || node.idNir || '').trim();
                 const prefixMatch = rawNum.match(/^(.*?)-\s*art\.?\s*(.+)$/i);
                 const annexPrefix = prefixMatch ? prefixMatch[1].trim() : '';
                 const isPreleggi = /disposizioni\s+sulla\s+legge\s+in\s+generale|preleggi/i.test(annexPrefix);
+                const annexDispHint = getReferenceCodeHint(annexPrefix);
+                const effectiveDispHint = annexDispHint.startsWith('disp_att_') ? annexDispHint : (docDispHint.startsWith('disp_att_') ? docDispHint : '');
+                const isDispAtt = Boolean(effectiveDispHint) || /disposizioni\s+(?:per\s+l['’]|di\s+)attuazione|norme\s+di\s+attuazione/i.test(annexPrefix);
+                const dispAttSuffix = dispAttSuffixByHint[effectiveDispHint] || (isDispAtt ? ' disp. att.' : '');
                 let numPart = prefixMatch ? prefixMatch[2].trim() : rawNum.replace(/^art(?:icolo)?\.?\s*/i, '').trim();
                 numPart = numPart.replace(/\s*\.\s*/g, '.').replace(/\s*-\s*/g, '-').replace(suffixRe, '-');
                 const article = numPart
-                    ? ('Art. ' + numPart + (isPreleggi ? ' Preleggi' : ''))
+                    ? ('Art. ' + numPart + (isPreleggi ? ' Preleggi' : dispAttSuffix))
                     : (source + ' #' + (index + 1));
                 const rubrica = String(node.rubricaNir || '').replace(/\s+/g, ' ').trim();
                 const title = rubrica ? (article + ' — ' + rubrica) : article;
@@ -2976,15 +3530,31 @@
                     .replace(/^(?:DISPOSIZIONI\s+SULLA\s+LEGGE\s+IN\s+GENERALE|CODICE\s+CIVILE|CODICE\s+PENALE|CODICE\s+DI\s+PROCEDURA\s+(?:CIVILE|PENALE))\s+/i, '')
                     .replace(/^Art(?:icolo)?\.?\s*[\d\w./-]+\.?\s*(?:\([^)]{1,140}\)\.?)?\s*/i, '')
                     .trim();
+                let externalUrl = 'https://www.normattiva.it/';
+                if (baseUrn) {
+                    let actUrn = baseUrn;
+                    if (/regio\.decreto:1942-03-16;262$/i.test(actUrn)) actUrn += isPreleggi ? ':1' : ':2';
+                    else if (/regio\.decreto:1930-10-19;1398$/i.test(actUrn) && annexPrefix) actUrn += ':1';
+                    const artSlug = numPart.replace(/[^a-z0-9.]/gi, '').toLowerCase();
+                    externalUrl = 'https://www.normattiva.it/uri-res/N2Ls?' + actUrn + (artSlug ? '~art' + artSlug : '') + '!vig=';
+                }
+                const status = detectArticleStatus({ title, article, summary: cleanedSummary, fullText: bodyHtml });
                 const tags = [cat, 'importato', 'normattiva', source.toLowerCase()];
                 if (isPreleggi) tags.push('preleggi');
+                if (isDispAtt) tags.push('disp. att.');
+                if (status.abrogated) tags.push('abrogato');
                 return {
                     id: 'norm-' + index,
+                    orderIndex: index,
                     category: cat,
                     categoryLabel: catLabel,
                     article,
                     title: title.slice(0, 160),
                     source,
+                    sectionPath,
+                    vigenzaDate,
+                    isAbrogated: status.abrogated,
+                    hasConstitutionalNote: status.constitutional,
                     tags,
                     summary: (cleanedSummary || plainBody || title).slice(0, 260),
                     fullText: bodyHtml,
@@ -3039,7 +3609,7 @@
                                 : [...(Array.isArray(data.legalDatabase) ? data.legalDatabase : []), ...(Array.isArray(data.extendedArticleIndex) ? data.extendedArticleIndex : [])];
                         const rows = rawRows.filter(x => !builtInIds.has(x?.id));
                         const entries = rows.filter(x => x && typeof x.title === 'string').map((x, i) => ({ ...x, id: 'temp-' + i, source: x.source || (sourceProvided ? title.value.trim() : file.name.replace(/\.[^/.]+$/, '')), category: x.category || document.getElementById('import-category-select').value, categoryLabel: x.categoryLabel || CATEGORY_LABELS[x.category] || 'I Miei Codici (Importati)', article: x.article || ('Voce ' + (i + 1)), summary: x.summary || x.title, fullText: x.fullText || '<p>' + safeHtml(x.summary || x.title) + '</p>', tags: Array.isArray(x.tags) ? x.tags : ['importato'] }));
-                        if (entries.length) { isImporting = true; setImportBusy('Importazione…', 'Sto salvando il file JSON in IndexedDB.'); try { const count = await applyImportedDocs(entries, sourceProvided ? title.value.trim() : ''); event.target.value = ''; closeImportModal(); showToast('Importazione completata: ' + count.toLocaleString('it-IT') + ' voci salvate.'); } catch (error) { showToast(error.message || 'Importazione JSON non completata.'); } finally { isImporting = false; resetImportButton(); } return; }
+                        if (entries.length) { isImporting = true; setImportBusy('Importazione…', 'Sto salvando il file JSON in IndexedDB.'); try { if (!Array.isArray(data) && data.bookmarkNotes && typeof data.bookmarkNotes === 'object') { bookmarkNotes = { ...bookmarkNotes, ...data.bookmarkNotes }; await saveBookmarkNotes(); } const count = await applyImportedDocs(entries, sourceProvided ? title.value.trim() : ''); event.target.value = ''; closeImportModal(); showToast('Importazione completata: ' + count.toLocaleString('it-IT') + ' voci salvate.'); } catch (error) { showToast(error.message || 'Importazione JSON non completata.'); } finally { isImporting = false; resetImportButton(); } return; }
                     } catch (error) { if (error instanceof SyntaxError) { /* Il JSON non è un archivio riconosciuto: testo nella textarea. */ } else throw error; }
                 }
                 document.getElementById('import-raw-text').value = text; updateImportPreview(text);
@@ -3064,11 +3634,12 @@
         }
         function splitLegalText(raw) {
             const normalized = cleanImportedMarkdown(raw);
-            const heading = new RegExp('^[ \\t]*(?:#{1,6}\\s*)?(?:Art(?:icolo)?\\.?)[ \\t]*' + ARTICLE_NUMBER_SOURCE + '(?=[\\s.,:;–—-]|$)', 'gim');
+            // Richiede iniziale maiuscola (Art./Articolo/ART.) ed esclude rinvii a capo come "Art. 11, comma 1, L. ..."
+            const heading = new RegExp('^[ \\t]*(?:#{1,6}\\s*)?(?:Art(?:icolo)?\\.?|ART(?:ICOLO)?\\.?)[ \\t]*' + ARTICLE_NUMBER_SOURCE + '(?=[\\s.,:;–—-]|$)(?![^\\n]{0,45}\\b(?:comma|commi|del\\s+medesimo|della\\s+legge|del\\s+codice|d\\.lgs|d\\.p\\.r))', 'gm');
             const matches = [...normalized.matchAll(heading)];
             if (!matches.length) return normalized ? [normalized] : [];
             const start = matches[0].index;
-            const separator = new RegExp('(?=^[ \\t]*(?:#{1,6}\\s*)?(?:Art(?:icolo)?\\.?)[ \\t]*' + ARTICLE_NUMBER_SOURCE + '(?=[\\s.,:;–—-]|$))', 'gim');
+            const separator = new RegExp('(?=^[ \\t]*(?:#{1,6}\\s*)?(?:Art(?:icolo)?\\.?|ART(?:ICOLO)?\\.?)[ \\t]*' + ARTICLE_NUMBER_SOURCE + '(?=[\\s.,:;–—-]|$)(?![^\\n]{0,45}\\b(?:comma|commi|del\\s+medesimo|della\\s+legge|del\\s+codice|d\\.lgs|d\\.p\\.r)))', 'gm');
             return normalized.slice(start).split(separator).map(part => part.trim()).filter(part => part.length > 10);
         }
         function updateImportPreview(raw) {
@@ -3139,10 +3710,15 @@
                     const batch = chunks.slice(start, start + batchSize);
                     batch.forEach((chunk, offset) => {
                         const i = start + offset; const lines = chunk.split(/\n+/).map(s => s.trim()).filter(Boolean); const first = lines[0] || source;
-                        const article = extractArticleHeading(first) || (source + ' #' + (i + 1));
+                        const dispHint = getReferenceCodeHint(source);
+                        const dispSuffix = ({ disp_att_cc: ' disp. att. c.c.', disp_att_cpc: ' disp. att. c.p.c.', disp_att_cpp: ' disp. att. c.p.p.', disp_att_cp: ' disp. att. c.p.' })[dispHint] || '';
+                        const extractedHeading = extractArticleHeading(first);
+                        const article = extractedHeading
+                            ? (extractedHeading + (dispSuffix && !/disp\.?\s*att\.?/i.test(extractedHeading) ? dispSuffix : ''))
+                            : (source + ' #' + (i + 1));
                         const plain = chunk.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                         const bodySummary = lines.slice(1).join(' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                        docs.push({ id: 'temp-' + i, category: cat, categoryLabel: CATEGORY_LABELS[cat] || 'I Miei Codici (Importati)', article, title: first.slice(0, 120), source, tags: [cat, 'importato', source.toLowerCase()], summary: (bodySummary || plain).slice(0, 260), fullText: '<h3>' + formatImportedMarkdownInline(first.replace(/^\s{0,3}#{1,6}\s*/, '')) + '</h3>' + lines.slice(1).map(line => '<p>' + formatImportedMarkdownInline(line.replace(/^\s*[-*+]\s+/, '• ')) + '</p>').join(''), externalUrl: 'https://www.normattiva.it/' });
+                        docs.push({ id: 'temp-' + i, orderIndex: i, category: cat, categoryLabel: CATEGORY_LABELS[cat] || 'I Miei Codici (Importati)', article, title: first.slice(0, 120), source, tags: [cat, 'importato', source.toLowerCase()], summary: (bodySummary || plain).slice(0, 260), fullText: '<h3>' + formatImportedMarkdownInline(first.replace(/^\s{0,3}#{1,6}\s*/, '')) + '</h3>' + lines.slice(1).map(line => '<p>' + formatImportedMarkdownInline(line.replace(/^\s*[-*+]\s+/, '• ')) + '</p>').join(''), externalUrl: 'https://www.normattiva.it/' });
                     });
                     const prepared = Math.min(start + batch.length, chunks.length); const percent = Math.round(prepared / Math.max(chunks.length, 1) * 100);
                     setImportBusy('Preparazione ' + percent + '%', 'Preparati ' + prepared.toLocaleString('it-IT') + ' di ' + chunks.length.toLocaleString('it-IT') + ' articoli…', percent);
@@ -3190,7 +3766,7 @@
             exportInProgress = true;
             try {
                 await ensureImportedDocsLoaded();
-                const payload = { app: 'Lex', exportedAt: new Date().toISOString(), importedDocs, bookmarks, legalDatabase };
+                const payload = { app: 'Lex', exportedAt: new Date().toISOString(), importedDocs, bookmarks, bookmarkNotes, legalDatabase };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json;charset=utf-8'}); const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'lex_archivio_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Archivio esportato in JSON.');
             } catch (error) { showToast('Esportazione JSON non riuscita: ' + (error.message || 'errore di lettura archivio')); }
@@ -3203,7 +3779,7 @@
                 await ensureImportedDocsLoaded();
                 if (!importedDocs.length) { showToast('Non ci sono codici importati da esportare.'); return; }
                 const payload = { app: 'Lex', exportType: 'codici-importati', exportedAt: new Date().toISOString(), importedDocs };
-                const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json;charset=utf-8'}); const url = URL.createObjectURL(blob);
+                const blob = new Blob([JSON.stringify(payload)], {type:'application/json;charset=utf-8'}); const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'lex_codici_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Codici importati esportati in JSON (senza segnalibri né API key).');
             } catch (error) { showToast('Esportazione codici non riuscita: ' + (error.message || 'errore di lettura archivio')); }
             finally { exportInProgress = false; }
@@ -3214,6 +3790,25 @@
             try {
             await ensureImportedDocsLoaded();
             const clone = document.documentElement.cloneNode(true);
+            let inlineStylesCss = '';
+            try {
+                const resp = await fetch('./styles.css', { cache: 'no-store' });
+                if (resp.ok) inlineStylesCss = await resp.text();
+            } catch (_) {}
+            if (!inlineStylesCss) {
+                try {
+                    const sheet = [...document.styleSheets].find(s => String(s.href || '').includes('styles.css'));
+                    if (sheet?.cssRules) inlineStylesCss = [...sheet.cssRules].map(r => r.cssText).join('\n');
+                } catch (_) {}
+            }
+            if (inlineStylesCss) {
+                const cssLink = clone.querySelector('link[rel="stylesheet"][href*="styles.css"]');
+                const inlineStyleEl = document.createElement('style');
+                inlineStyleEl.id = 'lex-inlined-styles';
+                inlineStyleEl.textContent = inlineStylesCss.replace(/<\/style/gi, '<\\/style');
+                if (cssLink) cssLink.replaceWith(inlineStyleEl);
+                else clone.querySelector('head')?.appendChild(inlineStyleEl);
+            }
             // L'esportazione puo avvenire mentre l'utente e dentro Archivio o
             // con una finestra aperta: il file nuovo deve sempre partire da Home.
             clone.querySelectorAll('details[open]').forEach(element => element.removeAttribute('open'));
@@ -3251,7 +3846,7 @@
                 inline.textContent = inline.textContent.replace(/^\s*window\.__IUSSEARCH_SEED__\s*=[^\n]*\r?\n?/, '');
                 const seedScript = document.createElement('script');
                 seedScript.id = 'iussearch-seed-script';
-                seedScript.textContent = 'window.__IUSSEARCH_SEED__=' + JSON.stringify({ seedId: createStandaloneExportId(), importedDocs, bookmarks }).replace(/<\/script/gi, '<\\/script') + ';';
+                seedScript.textContent = 'window.__IUSSEARCH_SEED__=' + JSON.stringify({ seedId: createStandaloneExportId(), importedDocs, bookmarks, bookmarkNotes }).replace(/<\/script/gi, '<\\/script') + ';';
                 inline.parentNode.insertBefore(seedScript, inline);
             } else throw new Error('Non trovo lo script principale dell’app da includere nel file autonomo.');
             const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML], {type:'text/html;charset=utf-8'}); const url = URL.createObjectURL(blob);
@@ -3263,7 +3858,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.0.4';
+        const APP_VERSION = '1.1.3';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -3413,7 +4008,25 @@
                     close();
                 });
             });
+            document.addEventListener('click', event => {
+                const refBtn = event.target?.closest?.('[data-legal-ref]');
+                if (!refBtn) return;
+                event.stopPropagation();
+                openArticleDirectly(refBtn.getAttribute('data-legal-ref'));
+            });
             document.addEventListener('keydown', event => {
+                if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+                    const modal = document.getElementById('detail-modal');
+                    const tag = (document.activeElement?.tagName || '').toLowerCase();
+                    if (modal && !modal.classList.contains('hidden') && !['input', 'textarea', 'select'].includes(tag)) {
+                        const targetBtn = document.getElementById(event.key === 'ArrowLeft' ? 'modal-prev-article-btn' : 'modal-next-article-btn');
+                        if (targetBtn && !targetBtn.disabled && typeof targetBtn.onclick === 'function') {
+                            event.preventDefault();
+                            targetBtn.click();
+                            return;
+                        }
+                    }
+                }
                 if (event.key !== 'Escape') return;
                 const closers = [
                     ['pwa-install-modal', closePwaInstallModal],
@@ -3720,13 +4333,22 @@
     <div id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 hidden items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
             <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-4">
-                <div>
-                    <span id="modal-badge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Norma</span>
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span id="modal-badge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Norma</span>
+                        <span id="modal-status-badges" class="inline-flex flex-wrap items-center gap-1.5"></span>
+                    </div>
+                    <p id="modal-breadcrumb" class="hidden text-[11px] text-slate-500 mt-1 leading-snug"></p>
                     <h3 id="modal-title" class="text-lg font-bold text-slate-900 mt-1">Titolo Norma</h3>
                 </div>
                 <button onclick="closeDetailModal()" class="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
+            </div>
+            <div id="modal-article-nav" class="hidden px-6 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between gap-2 text-xs">
+                <button id="modal-prev-article-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-amber-50 hover:border-amber-400 text-slate-800 font-semibold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Art. precedente</button>
+                <span class="hidden sm:inline text-[11px] text-slate-500">Scorri articoli (Alt + ← / →)</span>
+                <button id="modal-next-article-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-amber-50 hover:border-amber-400 text-slate-800 font-semibold transition">Art. successivo<i class="fa-solid fa-arrow-right ml-1"></i></button>
             </div>
             <div id="modal-body" class="p-6 overflow-y-auto font-serif text-slate-800 text-sm sm:text-base leading-relaxed space-y-4"></div>
             <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
@@ -3757,6 +4379,9 @@
                 <button onclick="toggleBookmarksDrawer()" class="text-slate-300 hover:text-white p-1.5">
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
+            </div>
+            <div class="px-5 pt-3 pb-2 bg-slate-50 border-b border-slate-200">
+                <input type="text" id="bookmarks-filter-input" oninput="filterBookmarksList(this.value)" placeholder="Filtra segnalibri o note…" class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500">
             </div>
             <div id="bookmarks-list" class="flex-1 overflow-y-auto p-5 space-y-3"></div>
             <div class="p-4 border-t border-slate-200 bg-slate-50 text-right">
@@ -3973,9 +4598,9 @@
     <div id="ai-settings-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title">
       <section class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden"><header class="bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="ai-settings-title" class="font-bold">Gemini AI</h2><p id="ai-active-model-label" class="text-xs text-slate-300">Modello attivo: gemini-3.5-flash-lite (rilevamento automatico)</p></div><button onclick="closeAiSettings()" aria-label="Chiudi">✕</button></header><div class="p-5 space-y-3"><label for="gemini-api-key" class="block text-sm font-semibold">API key</label><input id="gemini-api-key" type="password" autocomplete="off" placeholder="Incolla la chiave Gemini" class="w-full border rounded-xl p-3 text-sm"><div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"><span id="ai-models-summary" class="text-xs text-slate-700">Modello predefinito: gemini-3.5-flash-lite (fallback automatico attivo)</span><button id="refresh-gemini-models-btn" type="button" onclick="refreshGeminiModelsUI()" class="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50"><i class="fa-solid fa-rotate mr-1"></i>Rileva modelli</button></div><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-700 hover:text-violet-900 underline underline-offset-2"><i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>Non hai una chiave? Creala su Google AI Studio</a><p class="text-xs text-slate-600">La chiave viene salvata in IndexedDB su questo browser e non viene inclusa negli export. Le richieste AI inviano la domanda e i soli estratti selezionati a Google; l’uso può consumare quota o generare costi.</p><p class="text-xs text-amber-800">Su una pagina pubblicata, la chiave resta nel dispositivo/browser di chi la configura; non inserirla nel codice pubblico.</p><div id="ai-settings-status" class="hidden text-xs rounded-lg p-2" role="status" aria-live="polite"></div></div><footer class="p-4 bg-slate-50 flex justify-between"><button onclick="forgetAiKey()" class="text-xs text-rose-700">Rimuovi chiave</button><div class="flex gap-2"><button onclick="closeAiSettings()" class="px-3 py-2 border rounded-lg text-xs">Chiudi</button><button onclick="saveAiKey()" class="px-3 py-2 bg-violet-700 text-white rounded-lg text-xs font-semibold">Salva e verifica</button></div></footer></section>
     </div>
-    <div id="ask-codes-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="ask-codes-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="ask-codes-title" class="font-bold">Chiedi ai tuoi Codici</h2><p class="text-xs text-slate-300">Scegli le fonti da usare per la risposta</p></div><button onclick="closeAskCodes()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="ask-codes-question" class="block text-sm font-semibold mb-2">La tua domanda</label><textarea id="ask-codes-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. Quando un contratto può essere annullato per errore?"></textarea><fieldset class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><legend class="px-1 text-xs font-bold text-slate-700">Fonti della risposta</legend><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive" checked class="mt-0.5"><span><strong>Solo archivio</strong> — risposta basata esclusivamente sugli articoli importati. Se non bastano, l’AI lo dichiara.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive-web" class="mt-0.5"><span><strong>Archivio + link di ricerca web (senza grounding)</strong> — risposta basata sull’archivio; Gemini aggiunge parole chiave e link esterni, senza consultare il web.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive-web-grounded" class="mt-0.5"><span><strong>Archivio + ricerca web diretta (grounding)</strong> — integra gli articoli locali con una ricerca Google Search di Gemini e cita le fonti trovate. <em>Limiti gratuiti ed eventuali costi dipendono dal modello e dal piano della chiave API.</em></span></label></fieldset><div class="flex justify-end mt-3"><button id="ask-codes-submit" onclick="askYourCodes()" class="px-4 py-2 bg-violet-700 text-white rounded-xl text-sm font-semibold">Cerca e chiedi</button></div><section id="ask-codes-output" class="hidden mt-4 rounded-xl bg-slate-50 border text-sm"><div id="ask-codes-answer" class="p-4 whitespace-pre-wrap leading-relaxed"></div><div id="ask-codes-local-evidence" class="hidden border-t p-4 text-sm"></div><div id="ask-codes-web-sources" class="hidden border-t p-4 text-sm"></div></section></div></section></div>
-    <div id="web-search-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="web-search-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="web-search-title" class="font-bold">Ricerca web con Gemini</h2><p class="text-xs text-slate-300">Scegli se preparare i link o far consultare il web a Gemini</p></div><button onclick="closeWebSearch()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="web-search-question" class="block text-sm font-semibold mb-2">Cosa vuoi cercare?</label><textarea id="web-search-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. Quali novità recenti riguardano il Codice della strada?"></textarea><fieldset class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><legend class="px-1 text-xs font-bold text-slate-700">Modalità di ricerca</legend><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="web-search-mode" value="manual" checked class="mt-0.5"><span><strong>Parole chiave e link (senza grounding)</strong> — Gemini prepara i termini di ricerca e i collegamenti ai portali; apri tu i risultati e verifichi le fonti. Consumo minimo di quota API.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="web-search-mode" value="grounding" class="mt-0.5"><span><strong>Ricerca web diretta con Gemini (grounding)</strong> — Gemini consulta Google Search e restituisce una sintesi con fonti. <em>Disponibilità, limiti gratuiti ed eventuali costi dipendono dal modello attivo e dal piano Google AI della tua chiave.</em></span></label></fieldset><div class="flex justify-end mt-3"><button id="web-search-submit" onclick="searchWebWithGemini()" class="px-4 py-2 bg-violet-700 text-white rounded-xl text-sm font-semibold">Avvia la modalità selezionata</button></div><section id="web-search-output" class="hidden mt-4 p-4 rounded-xl bg-slate-50 border text-sm"><div id="web-search-answer" class="whitespace-pre-wrap leading-relaxed"></div><div id="web-search-sources" class="mt-4 border-t pt-3 text-sm"></div></section></div></section></div>
-    <div id="legal-db-search-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="legal-db-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="legal-db-title" class="font-bold">Cerca nelle banche dati</h2><p class="text-xs text-slate-300">Gemini prepara le parole chiave; i link aprono ricerche nei portali selezionati</p></div><button onclick="closeLegalDatabaseSearch()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="legal-db-question" class="block text-sm font-semibold mb-2">Argomento, caso o articolo</label><textarea id="legal-db-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. rumori del vicino; art. 844 c.c.; riforma del Codice della strada"></textarea><p class="mt-2 text-[11px] text-slate-500">Questa modalità usa Gemini senza Google Search grounding. I risultati si aprono in nuove schede e vanno verificati direttamente nei siti.</p><div class="flex justify-end mt-3"><button id="legal-db-submit" onclick="searchLegalDatabasesWithGemini()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl text-sm font-semibold">Genera parole chiave e link</button></div><section id="legal-db-output" class="hidden mt-4 p-4 rounded-xl bg-slate-50 border text-sm"><div id="legal-db-terms" class="font-medium text-slate-800"></div><div id="legal-db-links" class="mt-3 flex flex-wrap gap-2"></div></section></div></section></div>
+    <div id="ask-codes-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="ask-codes-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="ask-codes-title" class="font-bold">Chiedi ai tuoi Codici</h2><p class="text-xs text-slate-300">Scegli le fonti da usare per la risposta</p></div><button onclick="closeAskCodes()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="ask-codes-question" class="block text-sm font-semibold mb-2">La tua domanda</label><textarea id="ask-codes-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. Quando un contratto può essere annullato per errore?"></textarea><p class="mt-1.5 text-[11px] text-slate-500"><i class="fa-solid fa-shield-halved mr-1 text-amber-600"></i>Non inserire nomi reali, codici fiscali o dati identificativi: il testo della domanda viene inviato a Google Gemini.</p><fieldset class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><legend class="px-1 text-xs font-bold text-slate-700">Fonti della risposta</legend><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive" checked class="mt-0.5"><span><strong>Solo archivio</strong> — risposta basata esclusivamente sugli articoli importati. Se non bastano, l’AI lo dichiara.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive-web" class="mt-0.5"><span><strong>Archivio + link di ricerca web (senza grounding)</strong> — risposta basata sull’archivio; Gemini aggiunge parole chiave e link esterni, senza consultare il web.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive-web-grounded" class="mt-0.5"><span><strong>Archivio + ricerca web diretta (grounding)</strong> — integra gli articoli locali con una ricerca Google Search di Gemini e cita le fonti trovate. <em>Limiti gratuiti ed eventuali costi dipendono dal modello e dal piano della chiave API.</em></span></label></fieldset><div class="flex justify-end mt-3"><button id="ask-codes-submit" onclick="askYourCodes()" class="px-4 py-2 bg-violet-700 text-white rounded-xl text-sm font-semibold">Cerca e chiedi</button></div><section id="ask-codes-output" class="hidden mt-4 rounded-xl bg-slate-50 border text-sm"><div id="ask-codes-answer" class="p-4 whitespace-pre-wrap leading-relaxed"></div><div id="ask-codes-local-evidence" class="hidden border-t p-4 text-sm"></div><div id="ask-codes-web-sources" class="hidden border-t p-4 text-sm"></div></section></div></section></div>
+    <div id="web-search-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="web-search-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="web-search-title" class="font-bold">Ricerca web con Gemini</h2><p class="text-xs text-slate-300">Scegli se preparare i link o far consultare il web a Gemini</p></div><button onclick="closeWebSearch()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="web-search-question" class="block text-sm font-semibold mb-2">Cosa vuoi cercare?</label><textarea id="web-search-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. Quali novità recenti riguardano il Codice della strada?"></textarea><p class="mt-1.5 text-[11px] text-slate-500"><i class="fa-solid fa-shield-halved mr-1 text-amber-600"></i>Non inserire nomi reali, codici fiscali o dati identificativi: il testo della domanda viene inviato a Google Gemini.</p><fieldset class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><legend class="px-1 text-xs font-bold text-slate-700">Modalità di ricerca</legend><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="web-search-mode" value="manual" checked class="mt-0.5"><span><strong>Parole chiave e link (senza grounding)</strong> — Gemini prepara i termini di ricerca e i collegamenti ai portali; apri tu i risultati e verifichi le fonti. Consumo minimo di quota API.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="web-search-mode" value="grounding" class="mt-0.5"><span><strong>Ricerca web diretta con Gemini (grounding)</strong> — Gemini consulta Google Search e restituisce una sintesi con fonti. <em>Disponibilità, limiti gratuiti ed eventuali costi dipendono dal modello attivo e dal piano Google AI della tua chiave.</em></span></label></fieldset><div class="flex justify-end mt-3"><button id="web-search-submit" onclick="searchWebWithGemini()" class="px-4 py-2 bg-violet-700 text-white rounded-xl text-sm font-semibold">Avvia la modalità selezionata</button></div><section id="web-search-output" class="hidden mt-4 p-4 rounded-xl bg-slate-50 border text-sm"><div id="web-search-answer" class="whitespace-pre-wrap leading-relaxed"></div><div id="web-search-sources" class="mt-4 border-t pt-3 text-sm"></div></section></div></section></div>
+    <div id="legal-db-search-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="legal-db-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="legal-db-title" class="font-bold">Cerca nelle banche dati</h2><p class="text-xs text-slate-300">Gemini prepara le parole chiave; i link aprono ricerche nei portali selezionati</p></div><button onclick="closeLegalDatabaseSearch()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="legal-db-question" class="block text-sm font-semibold mb-2">Argomento, caso o articolo</label><textarea id="legal-db-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. rumori del vicino; art. 844 c.c.; riforma del Codice della strada"></textarea><p class="mt-1.5 text-[11px] text-slate-500"><i class="fa-solid fa-shield-halved mr-1 text-amber-600"></i>Non inserire nomi reali, codici fiscali o dati identificativi: il testo della domanda viene inviato a Google Gemini.</p><p class="mt-2 text-[11px] text-slate-500">Questa modalità usa Gemini senza Google Search grounding. I risultati si aprono in nuove schede e vanno verificati direttamente nei siti.</p><div class="flex justify-end mt-3"><button id="legal-db-submit" onclick="searchLegalDatabasesWithGemini()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl text-sm font-semibold">Genera parole chiave e link</button></div><section id="legal-db-output" class="hidden mt-4 p-4 rounded-xl bg-slate-50 border text-sm"><div id="legal-db-terms" class="font-medium text-slate-800"></div><div id="legal-db-links" class="mt-3 flex flex-wrap gap-2"></div></section></div></section></div>
     <div id="compare-codes-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="compare-codes-title"><section class="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="compare-codes-title" class="font-bold">Confronta versioni importate</h2><p class="text-xs text-slate-300">Confronto per numero articolo tra due fonti importate</p></div><button onclick="closeCodeCompare()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto"><div class="grid sm:grid-cols-2 gap-3"><select id="compare-source-a" class="border rounded-lg p-2 text-sm"></select><select id="compare-source-b" class="border rounded-lg p-2 text-sm"></select></div><button onclick="compareImportedVersions()" class="mt-3 px-4 py-2 bg-violet-700 text-white rounded-lg text-xs font-semibold">Confronta testi</button><div id="compare-output" class="mt-4 text-sm space-y-3"></div></div></section></div>
 
     <!-- Modal Guida Installazione PWA -->
@@ -4001,7 +4626,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.0.4</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.3</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

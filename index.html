@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IusSearch Pro — Ricerca Normativa di Riferimento</title>
+    <title>Lex — Ricerca Normativa di Riferimento</title>
     <!-- PWA Metadata & Manifest -->
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="IusSearch Pro">
+    <meta name="apple-mobile-web-app-title" content="Lex">
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
@@ -3190,9 +3190,9 @@
             exportInProgress = true;
             try {
                 await ensureImportedDocsLoaded();
-                const payload = { app: 'IusSearch Pro', exportedAt: new Date().toISOString(), importedDocs, bookmarks, legalDatabase };
+                const payload = { app: 'Lex', exportedAt: new Date().toISOString(), importedDocs, bookmarks, legalDatabase };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json;charset=utf-8'}); const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'iussearch_archivio_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Archivio esportato in JSON.');
+                const a = document.createElement('a'); a.href = url; a.download = 'lex_archivio_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Archivio esportato in JSON.');
             } catch (error) { showToast('Esportazione JSON non riuscita: ' + (error.message || 'errore di lettura archivio')); }
             finally { exportInProgress = false; }
         }
@@ -3202,9 +3202,9 @@
             try {
                 await ensureImportedDocsLoaded();
                 if (!importedDocs.length) { showToast('Non ci sono codici importati da esportare.'); return; }
-                const payload = { app: 'IusSearch Pro', exportType: 'codici-importati', exportedAt: new Date().toISOString(), importedDocs };
+                const payload = { app: 'Lex', exportType: 'codici-importati', exportedAt: new Date().toISOString(), importedDocs };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json;charset=utf-8'}); const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = 'iussearch_codici_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Codici importati esportati in JSON (senza segnalibri né API key).');
+                const a = document.createElement('a'); a.href = url; a.download = 'lex_codici_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Codici importati esportati in JSON (senza segnalibri né API key).');
             } catch (error) { showToast('Esportazione codici non riuscita: ' + (error.message || 'errore di lettura archivio')); }
             finally { exportInProgress = false; }
         }
@@ -3255,7 +3255,7 @@
                 inline.parentNode.insertBefore(seedScript, inline);
             } else throw new Error('Non trovo lo script principale dell’app da includere nel file autonomo.');
             const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML], {type:'text/html;charset=utf-8'}); const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'IusSearch_Pro_' + new Date().toISOString().slice(0,10) + '.html'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Copia HTML esportata con archivio personale incluso.');
+            const a = document.createElement('a'); a.href = url; a.download = 'Lex_' + new Date().toISOString().slice(0,10) + '.html'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Copia HTML esportata con archivio personale incluso.');
             } catch (error) { showToast('Esportazione HTML non riuscita: ' + (error.message || 'errore di lettura archivio')); }
             finally { exportInProgress = false; }
         }
@@ -3263,7 +3263,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.0.1';
+        const APP_VERSION = '1.0.2';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -3354,7 +3354,7 @@
                 deferredPwaPrompt = null;
                 document.getElementById('pwa-install-btn')?.classList.add('hidden');
                 closePwaInstallModal();
-                showToast('IusSearch Pro installata sul dispositivo.');
+                showToast('Lex installata sul dispositivo.');
             });
             window.matchMedia?.('(display-mode: standalone)')?.addEventListener?.('change', updatePwaInstallButtonVisibility);
 
@@ -3463,7 +3463,7 @@
                     <i class="fa-solid fa-scale-balanced text-lg"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg tracking-tight leading-none">IusSearch <span class="text-amber-400 font-normal text-sm">Pro</span></h1>
+                    <h1 class="font-bold text-lg tracking-tight leading-none">Lex</h1>
                 </div>
             </div>
 
@@ -3492,7 +3492,7 @@
         <div class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm">
             <div class="flex items-center gap-2 font-medium">
                 <i class="fa-solid fa-arrows-rotate text-emerald-100"></i>
-                <span>È disponibile una <strong>nuova versione</strong> di IusSearch Pro.</span>
+                <span>È disponibile una <strong>nuova versione</strong> di Lex.</span>
             </div>
             <div class="flex items-center gap-2">
                 <button id="pwa-update-apply-btn" type="button" onclick="applyPwaUpdate()" class="px-3.5 py-1.5 rounded-lg bg-white text-emerald-900 hover:bg-emerald-50 font-bold text-xs shadow-sm transition">
@@ -3985,7 +3985,7 @@
                 <div class="flex items-center gap-2.5">
                     <i class="fa-solid fa-mobile-screen-button text-emerald-400"></i>
                     <div>
-                        <h2 id="pwa-install-modal-title" class="font-bold text-base">Installa IusSearch Pro</h2>
+                        <h2 id="pwa-install-modal-title" class="font-bold text-base">Installa Lex</h2>
                         <p class="text-xs text-slate-300">Usa l’app a schermo intero come un’app nativa</p>
                     </div>
                 </div>
@@ -4001,7 +4001,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>IusSearch Pro</strong> <span class="text-slate-400">v1.0.1</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.0.2</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

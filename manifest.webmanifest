@@ -1,6 +1,6 @@
 {
-  "name": "IusSearch Pro — Ricerca Normativa",
-  "short_name": "IusSearch Pro",
+  "name": "Lex",
+  "short_name": "Lex",
   "description": "Ricerca normativa italiana, gestione codici personali e assistente Gemini AI.",
   "start_url": "./",
   "scope": "./",

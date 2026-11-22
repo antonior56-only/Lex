@@ -1,7 +1,7 @@
 // Lex — Service Worker PWA
 // Per notificare gli utenti di una nuova versione su GitHub Pages,
 // incrementa APP_VERSION (es. '1.0.1', '1.0.2', ...) quando aggiorni i file.
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const CACHE_NAME = `iussearch-pro-v${APP_VERSION}`;
 const CORE_ASSETS = [
   './',
@@ -43,6 +43,7 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.toLowerCase().endsWith('.pdf')) return;
 
   const isNavigation = request.mode === 'navigate'
     || url.pathname.endsWith('/')

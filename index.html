@@ -2458,7 +2458,7 @@
         function hideLayer(id) {
             const el = document.getElementById(id); if (!el) return;
             el.classList.add('hidden'); el.classList.remove('flex');
-        const anyOpen = ['detail-modal', 'bookmarks-drawer', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'compare-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'import-modal', 'export-modal', 'pwa-install-modal'].some(key => !document.getElementById(key)?.classList.contains('hidden'));
+        const anyOpen = ['detail-modal', 'bookmarks-drawer', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'compare-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'normattiva-download-modal', 'import-modal', 'export-modal', 'pwa-install-modal'].some(key => !document.getElementById(key)?.classList.contains('hidden'));
             if (!anyOpen && modalBodyScrollState !== null) {
                 document.body.style.overflow = modalBodyScrollState.overflow; document.body.style.overscrollBehavior = modalBodyScrollState.overscroll; modalBodyScrollState = null;
             }
@@ -3230,6 +3230,204 @@
             }
         }
         function closeLinkCheckModal() { hideLayer('link-check-modal'); }
+
+        const NORMATTIVA_DOWNLOAD_MAIN_PRESETS = [
+            { label: 'Codice Civile (R.D. 262/1942)', type: 'regio.decreto', date: '1942-03-16', number: '262', annex: ':2', title: 'Codice Civile' },
+            { label: 'Preleggi — Disp. sulla legge in generale (R.D. 262/1942)', type: 'regio.decreto', date: '1942-03-16', number: '262', annex: ':1', title: 'Disposizioni sulla legge in generale' },
+            { label: 'Disp. att. Codice Civile (R.D. 318/1942)', type: 'regio.decreto', date: '1942-03-30', number: '318', annex: '', title: 'Disposizioni di attuazione del Codice Civile' },
+            { label: 'Codice Penale (R.D. 1398/1930)', type: 'regio.decreto', date: '1930-10-19', number: '1398', annex: ':1', title: 'Codice Penale' },
+            { label: 'Disp. att. Codice Penale (R.D. 601/1931)', type: 'regio.decreto', date: '1931-05-28', number: '601', annex: '', title: 'Disposizioni di attuazione del Codice Penale' },
+            { label: 'Codice di Procedura Civile (R.D. 1443/1940)', type: 'regio.decreto', date: '1940-10-28', number: '1443', annex: '', title: 'Codice di Procedura Civile' },
+            { label: 'Disp. att. Codice di Procedura Civile (R.D. 1368/1941)', type: 'regio.decreto', date: '1941-12-18', number: '1368', annex: '', title: 'Disposizioni di attuazione del Codice di Procedura Civile' },
+            { label: 'Codice di Procedura Penale (D.P.R. 447/1988)', type: 'decreto.del.presidente.della.repubblica', date: '1988-09-22', number: '447', annex: '', title: 'Codice di Procedura Penale' },
+            { label: 'Disp. att. Codice di Procedura Penale (D.Lgs. 271/1989)', type: 'decreto.legislativo', date: '1989-07-28', number: '271', annex: '', title: 'Norme di attuazione del Codice di Procedura Penale' },
+            { label: 'Costituzione della Repubblica Italiana (27/12/1947)', type: 'costituzione', date: '1947-12-27', number: '', annex: '', title: 'Costituzione della Repubblica Italiana' }
+        ];
+        const NORMATTIVA_TYPE_LABELS = {
+            'legge': 'Legge',
+            'decreto.legislativo': 'Decreto Legislativo',
+            'decreto.legge': 'Decreto-Legge',
+            'decreto.del.presidente.della.repubblica': 'Decreto del Presidente della Repubblica',
+            'regio.decreto': 'Regio Decreto',
+            'costituzione': 'Costituzione'
+        };
+        let normattivaDownloadAnnex = '';
+        let normattivaPresetsInitialized = false;
+
+        function getNormattivaDownloadPresets() {
+            const sector = KNOWN_NORMATTIVA_ACTS.map(act => {
+                const m = String(act.urn || '').match(/^([^:]+):(\d{4}-\d{2}-\d{2});(\d+)(:\d+)?$/);
+                if (!m) return null;
+                return {
+                    label: `${act.label} (${NORMATTIVA_TYPE_LABELS[m[1]] || m[1]} ${m[3]}/${m[2].slice(0, 4)})`,
+                    type: m[1], date: m[2], number: m[3], annex: m[4] || '', title: act.label
+                };
+            }).filter(Boolean);
+            return { main: NORMATTIVA_DOWNLOAD_MAIN_PRESETS, sector };
+        }
+        function populateNormattivaDownloadPresets() {
+            if (normattivaPresetsInitialized) return;
+            const select = document.getElementById('normattiva-quick-preset');
+            if (!select) return;
+            const { main, sector } = getNormattivaDownloadPresets();
+            select.innerHTML = '<option value="">— Compilazione manuale oppure scegli un codice/legge —</option>'
+                + '<optgroup label="Codici principali e Costituzione">'
+                + main.map((p, i) => `<option value="main:${i}">${safeHtml(p.label)}</option>`).join('')
+                + '</optgroup>'
+                + '<optgroup label="Codici di settore e leggi principali">'
+                + sector.map((p, i) => `<option value="sector:${i}">${safeHtml(p.label)}</option>`).join('')
+                + '</optgroup>';
+            normattivaPresetsInitialized = true;
+        }
+        function applyNormattivaPreset(value) {
+            if (!value) { normattivaDownloadAnnex = ''; updateNormattivaDownloadPreview(); return; }
+            const [group, idxStr] = String(value).split(':');
+            const presets = getNormattivaDownloadPresets();
+            const item = presets[group]?.[Number(idxStr)];
+            if (!item) return;
+            const typeEl = document.getElementById('normattiva-act-type');
+            const dateEl = document.getElementById('normattiva-act-date');
+            const numEl = document.getElementById('normattiva-act-number');
+            const titleEl = document.getElementById('normattiva-act-title');
+            if (typeEl) typeEl.value = item.type;
+            if (dateEl) dateEl.value = item.date;
+            if (numEl) numEl.value = item.number;
+            if (titleEl) titleEl.value = item.title;
+            normattivaDownloadAnnex = item.annex || '';
+            updateNormattivaDownloadPreview();
+        }
+        function clearNormattivaPresetSelection() {
+            const presetEl = document.getElementById('normattiva-quick-preset');
+            if (presetEl) presetEl.value = '';
+            normattivaDownloadAnnex = '';
+            updateNormattivaDownloadPreview();
+        }
+        function buildNormattivaModalData() {
+            const type = document.getElementById('normattiva-act-type')?.value || '';
+            const dateIso = document.getElementById('normattiva-act-date')?.value.trim() || '';
+            const number = (document.getElementById('normattiva-act-number')?.value || '').replace(/[^\d]/g, '').trim();
+            const rawArt = (document.getElementById('normattiva-act-article')?.value || '').trim();
+            const title = (document.getElementById('normattiva-act-title')?.value || '').trim();
+            const dateIt = /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? `${dateIso.slice(8, 10)}/${dateIso.slice(5, 7)}/${dateIso.slice(0, 4)}` : '';
+            const parsedArt = rawArt ? parseNormattivaArticleReference(rawArt.match(/^art/i) ? rawArt : ('Art. ' + rawArt), false) : null;
+            const artSlug = parsedArt ? (parsedArt.number + parsedArt.suffix + (parsedArt.extension ? '.' + parsedArt.extension : '')) : rawArt.replace(/^art(?:icolo)?\.?\s*/i, '').replace(/[^a-z0-9.]/gi, '').toLowerCase();
+
+            let directUrl = '';
+            if (type === 'costituzione') {
+                directUrl = `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:costituzione:1947-12-27${artSlug ? `~art${artSlug}` : ''}!vig=`;
+            } else if (type && /^\d{4}-\d{2}-\d{2}$/.test(dateIso) && number) {
+                let annex = normattivaDownloadAnnex;
+                if (!annex && type === 'regio.decreto' && dateIso === '1942-03-16' && number === '262') annex = ':2';
+                if (!annex && type === 'regio.decreto' && dateIso === '1930-10-19' && number === '1398') annex = ':1';
+                directUrl = `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:${type}:${dateIso};${number}${annex}${artSlug ? `~art${artSlug}` : ''}!vig=`;
+            }
+
+            let openDataUrl = 'https://dati.normattiva.it/home';
+            const hasExactDate = /^\d{4}-\d{2}-\d{2}$/.test(dateIso);
+            const hasOpenDataFilter = Boolean((number && hasExactDate) || hasExactDate || number || title || type === 'costituzione');
+            if (hasOpenDataFilter) {
+                const todayIso = new Date().toISOString().slice(0, 10);
+                const anno = hasExactDate ? dateIso.slice(0, 4) : '';
+                const mese = hasExactDate ? String(Number(dateIso.slice(5, 7))) : '';
+                const giorno = hasExactDate ? String(Number(dateIso.slice(8, 10))) : '';
+                // Se numero + data sono presenti, lascia titolo vuoto per garantire il match esatto sull'atto ufficiale.
+                const titoloParam = (number && hasExactDate) ? '' : (type === 'costituzione' && !title ? 'Costituzione' : title);
+                const params = new URLSearchParams({
+                    isAdvancedSearch: 'true',
+                    numeroProvvedimento: number,
+                    giornoProvvedimento: giorno,
+                    meseProvvedimento: mese,
+                    annoProvvedimento: anno,
+                    denominazioneAtto: '',
+                    titolo: titoloParam,
+                    testo: '',
+                    classeProvvedimento: '',
+                    dataInizioEmanazione: '',
+                    dataFineEmanazione: '',
+                    dataInizioPubblicazione: '',
+                    dataFinePubblicazione: '',
+                    vigenzaOption: '',
+                    vigenzaDate: todayIso,
+                    isVigenzaSelected: 'false',
+                    chipDenominazione: '',
+                    chipClasseProv: '',
+                    isReset: 'true'
+                });
+                openDataUrl = `https://dati.normattiva.it/risultati?${params.toString()}`;
+            }
+
+            const parts = [];
+            if (type && NORMATTIVA_TYPE_LABELS[type]) parts.push(`Tipo atto: ${NORMATTIVA_TYPE_LABELS[type]}`);
+            if (dateIt) parts.push(`Data emanazione: ${dateIt}`);
+            if (number) parts.push(`Numero: ${number}`);
+            if (rawArt) parts.push(`Articolo: ${rawArt}`);
+            if (title) parts.push(`Titolo: ${title}`);
+            return { type, dateIso, dateIt, number, rawArt, title, directUrl, openDataUrl, hasOpenDataFilter, summaryText: parts.join(' | ') };
+        }
+        function updateNormattivaDownloadPreview() {
+            const box = document.getElementById('normattiva-preview-box');
+            const directBtn = document.getElementById('normattiva-open-direct-btn');
+            const openDataLabel = document.getElementById('normattiva-opendata-btn-label');
+            if (!box) return;
+            const data = buildNormattivaModalData();
+            if (directBtn) {
+                directBtn.disabled = !data.directUrl;
+                directBtn.classList.toggle('opacity-50', !data.directUrl);
+            }
+            if (openDataLabel) {
+                openDataLabel.textContent = data.hasOpenDataFilter
+                    ? 'Apri atto su dati.normattiva.it (JSON)'
+                    : 'Apri dati.normattiva.it/home (JSON)';
+            }
+            if (!data.summaryText) {
+                box.innerHTML = '<p class="text-xs text-slate-500">Seleziona un codice dal menu rapido oppure compila Numero e Data di emanazione (o Parole nel titolo) per aprire direttamente la scheda su <strong>dati.normattiva.it</strong>.</p>';
+                return;
+            }
+            box.innerHTML = `<p class="text-xs font-semibold text-slate-800">${safeHtml(data.summaryText)}</p>`
+                + `<p class="mt-1 text-[11px] text-blue-800"><i class="fa-solid fa-circle-check mr-1"></i>Ricerca filtrata pronta su <strong>dati.normattiva.it</strong> (apertura diretta sull’atto).</p>`
+                + (data.directUrl
+                    ? `<p class="mt-0.5 text-[11px] text-emerald-800"><i class="fa-solid fa-circle-check mr-1"></i>Link diretto vigente pronto anche su <strong>Normattiva.it</strong>${data.rawArt ? ` (Art. ${safeHtml(data.rawArt)})` : ''}.</p>`
+                    : `<p class="mt-0.5 text-[11px] text-amber-800">Per aprire il testo vigente diretto su Normattiva.it servono Tipo atto, Data e Numero.</p>`);
+        }
+        function openNormattivaDownloadModal() {
+            lastFocusedElement = document.activeElement;
+            populateNormattivaDownloadPresets();
+            updateNormattivaDownloadPreview();
+            showLayer('normattiva-download-modal');
+            document.getElementById('normattiva-quick-preset')?.focus();
+        }
+        function closeNormattivaDownloadModal() {
+            hideLayer('normattiva-download-modal');
+            lastFocusedElement?.focus();
+        }
+        function openNormattivaOpenDataPortal() {
+            const data = buildNormattivaModalData();
+            window.open(data.openDataUrl || 'https://dati.normattiva.it/home', '_blank', 'noopener,noreferrer');
+        }
+        function openNormattivaDirectAct() {
+            const data = buildNormattivaModalData();
+            if (!data.directUrl) {
+                showToast('Inserisci Tipo atto, Data di emanazione e Numero per aprire il link diretto.');
+                return;
+            }
+            window.open(data.directUrl, '_blank', 'noopener,noreferrer');
+        }
+        async function copyNormattivaActSummary() {
+            const data = buildNormattivaModalData();
+            if (!data.summaryText) { showToast('Compila prima almeno un campo da copiare.'); return; }
+            await copyTextFallback(data.directUrl ? `${data.summaryText}\n${data.directUrl}` : data.summaryText);
+        }
+        async function switchNormattivaToImport() {
+            const data = buildNormattivaModalData();
+            closeNormattivaDownloadModal();
+            await openImportModal();
+            const sourceInput = document.getElementById('import-source-title');
+            if (sourceInput && data.title && !sourceInput.value.trim()) {
+                sourceInput.value = data.title;
+                sourceManuallyEdited = true;
+            }
+        }
+
         async function openExportModal() { lastFocusedElement = document.activeElement; const n = document.getElementById('export-total-count'); if (n) n.textContent = 'Caricamento archivio…'; showLayer('export-modal'); try { await ensureImportedDocsLoaded(); if (n) n.textContent = getAllDocuments().length.toLocaleString('it-IT') + ' voci totali'; } catch (_) { if (n) n.textContent = 'Archivio non disponibile'; } }
         function closeExportModal() { hideLayer('export-modal'); lastFocusedElement?.focus(); }
         const safeHtml = escapeHtml;
@@ -3812,7 +4010,7 @@
             // L'esportazione puo avvenire mentre l'utente e dentro Archivio o
             // con una finestra aperta: il file nuovo deve sempre partire da Home.
             clone.querySelectorAll('details[open]').forEach(element => element.removeAttribute('open'));
-            ['detail-modal', 'import-modal', 'export-modal', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'compare-codes-modal', 'bookmarks-drawer', 'pwa-install-modal', 'pwa-update-banner'].forEach(id => {
+            ['detail-modal', 'import-modal', 'export-modal', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'normattiva-download-modal', 'compare-codes-modal', 'bookmarks-drawer', 'pwa-install-modal', 'pwa-update-banner'].forEach(id => {
                 const layer = clone.querySelector('#' + id);
                 if (layer) { layer.classList.add('hidden'); layer.classList.remove('flex'); }
             });
@@ -3858,7 +4056,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.1.3';
+        const APP_VERSION = '1.1.5';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -3992,6 +4190,7 @@
                 ['bookmarks-drawer', () => hideLayer('bookmarks-drawer')],
                 ['manual-api-modal', closeManualAndApi],
                 ['link-check-modal', closeLinkCheckModal],
+                ['normattiva-download-modal', closeNormattivaDownloadModal],
                 ['import-modal', closeImportModal],
                 ['export-modal', closeExportModal],
                 ['ai-settings-modal', closeAiSettings],
@@ -4034,6 +4233,7 @@
                     ['manual-api-modal', closeManualAndApi],
                     ['legal-db-search-modal', closeLegalDatabaseSearch],
                     ['link-check-modal', closeLinkCheckModal],
+                    ['normattiva-download-modal', closeNormattivaDownloadModal],
                     ['web-search-modal', closeWebSearch],
                     ['compare-codes-modal', closeCodeCompare],
                     ['ask-codes-modal', closeAskCodes],
@@ -4088,6 +4288,7 @@
                         <button onclick="this.closest('details').open=false;openImportModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-amber-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-file-import text-amber-600"></i>Importa codici</button>
                         <button onclick="this.closest('details').open=false;openExportModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-emerald-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-file-export text-emerald-600"></i>Esporta archivio</button>
                         <button onclick="this.closest('details').open=false;openLinkCheckModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-blue-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-link text-blue-600"></i>Verifica link</button>
+                        <button onclick="this.closest('details').open=false;openNormattivaDownloadModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-blue-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-down text-blue-600"></i>Scarica da Normattiva</button>
                     </div>
                 </details>
 
@@ -4498,6 +4699,106 @@
         </section>
     </div>
 
+
+    <div id="normattiva-download-modal" role="dialog" aria-modal="true" aria-labelledby="normattiva-download-title" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] hidden items-center justify-center p-4">
+        <section class="bg-white rounded-2xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+            <header class="px-5 py-4 bg-navy-900 text-white flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-cloud-arrow-down text-amber-400"></i>
+                    <div>
+                        <h2 id="normattiva-download-title" class="font-bold text-base leading-tight">Scarica da Normattiva</h2>
+                        <p class="text-[11px] text-slate-300">Prepara gli estremi per dati.normattiva.it (JSON) o apri la legge vigente</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeNormattivaDownloadModal()" aria-label="Chiudi" class="text-slate-300 hover:text-white p-1">✕</button>
+            </header>
+
+            <div class="p-5 overflow-y-auto space-y-4 text-sm">
+                <!-- Blocco 1: Selezione rapida -->
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+                    <label for="normattiva-quick-preset" class="block text-xs font-bold text-amber-950 mb-1.5">
+                        <i class="fa-solid fa-bolt mr-1 text-amber-600"></i>1. Selezione rapida (1 clic, facoltativa)
+                    </label>
+                    <select id="normattiva-quick-preset" onchange="applyNormattivaPreset(this.value)" class="w-full text-xs bg-white border border-amber-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-amber-500">
+                        <option value="">— Compilazione manuale oppure scegli un codice/legge —</option>
+                    </select>
+                </div>
+
+                <!-- Blocco 2: Dati dell'atto -->
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-3">
+                    <p class="text-xs font-bold text-slate-800">2. Estremi del codice o della legge</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label for="normattiva-act-type" class="block text-[11px] font-semibold text-slate-700 mb-1">Tipo atto</label>
+                            <select id="normattiva-act-type" onchange="clearNormattivaPresetSelection()" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:border-blue-500">
+                                <option value="">Seleziona tipo…</option>
+                                <option value="legge">Legge (L.)</option>
+                                <option value="decreto.legislativo">Decreto Legislativo (D.Lgs.)</option>
+                                <option value="decreto.legge">Decreto-Legge (D.L.)</option>
+                                <option value="decreto.del.presidente.della.repubblica">D.P.R.</option>
+                                <option value="regio.decreto">Regio Decreto (R.D.)</option>
+                                <option value="costituzione">Costituzione</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="normattiva-act-date" class="block text-[11px] font-semibold text-slate-700 mb-1">Data di emanazione</label>
+                            <input id="normattiva-act-date" type="date" oninput="clearNormattivaPresetSelection()" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="normattiva-act-number" class="block text-[11px] font-semibold text-slate-700 mb-1">Numero atto</label>
+                            <input id="normattiva-act-number" type="text" placeholder="es. 241, 285, 1398" oninput="clearNormattivaPresetSelection()" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label for="normattiva-act-article" class="block text-[11px] font-semibold text-slate-700 mb-1">Articolo (facoltativo)</label>
+                            <input id="normattiva-act-article" type="text" placeholder="es. 844, 346-bis" oninput="updateNormattivaDownloadPreview()" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="normattiva-act-title" class="block text-[11px] font-semibold text-slate-700 mb-1">Parole nel titolo (facoltativo)</label>
+                            <input id="normattiva-act-title" type="text" placeholder="es. Codice della strada" oninput="updateNormattivaDownloadPreview()" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div id="normattiva-preview-box" class="rounded-lg border border-slate-200 bg-white p-3"></div>
+                </div>
+
+                <!-- Blocco 3: Azioni e flusso guidato -->
+                <div class="rounded-xl border border-blue-200 bg-blue-50 p-3.5 space-y-3">
+                    <p class="text-xs font-bold text-blue-950">3. Apri il portale o consulta subito il testo vigente</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="openNormattivaOpenDataPortal()" class="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold transition inline-flex items-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-database"></i>
+                            <span id="normattiva-opendata-btn-label">Apri dati.normattiva.it/home (JSON)</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </button>
+                        <button id="normattiva-open-direct-btn" type="button" onclick="openNormattivaDirectAct()" class="px-3.5 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold transition inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-landmark text-amber-400"></i>
+                            <span>Apri legge/articolo su Normattiva.it</span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                        </button>
+                        <button type="button" onclick="copyNormattivaActSummary()" class="px-3 py-2 rounded-xl bg-white hover:bg-blue-100 text-blue-900 border border-blue-300 text-xs font-semibold transition inline-flex items-center gap-1.5">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>Copia estremi</span>
+                        </button>
+                    </div>
+                    <p class="text-[11px] leading-relaxed text-blue-900">
+                        <strong>Come scaricare il JSON da dati.normattiva.it:</strong> clicca il pulsante blu per aprire il portale già filtrato sull’atto selezionato, scegli formato <strong>JSON</strong> + <strong>Vigente ad oggi</strong> → <strong>Download</strong>, estrai il file <code>.json</code> dallo <code>.ZIP</code> e poi importalo qui.
+                    </p>
+                </div>
+            </div>
+
+            <footer class="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                <button type="button" onclick="switchNormattivaToImport()" class="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-file-import"></i>
+                    <span>Passa a Importa codici</span>
+                </button>
+                <button type="button" onclick="closeNormattivaDownloadModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100 transition">
+                    Chiudi
+                </button>
+            </footer>
+        </section>
+    </div>
+
     <!-- Modal Esporta Dati (JSON e HTML Completo) -->
     <div id="export-modal" role="dialog" aria-modal="true" aria-labelledby="export-modal-title" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-xl w-full flex flex-col shadow-2xl overflow-hidden">
@@ -4626,7 +4927,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.3</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.5</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

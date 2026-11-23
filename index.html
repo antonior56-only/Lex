@@ -1266,12 +1266,42 @@
 
         function scoreLooseMatch(text, query) {
             const normalizedText = normalizeSearchText(text);
-            const normalizedQuery = normalizeSearchText(query).trim();
+            const { clean } = parseSearchQueryMode(query);
+            const normalizedQuery = normalizeSearchText(clean).trim();
             if (normalizedQuery.length < 3) return 0;
-            const terms = normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
-            if (!terms.length) return normalizedText.includes(normalizedQuery) ? 1 : 0;
+            const rawTerms = normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
+            const terms = rawTerms.filter(term => !SEARCH_STOPWORDS.has(term));
+            if (!terms.length) return 0;
             const found = terms.filter(term => searchTermMatches(normalizedText, term)).length;
-            return found === terms.length ? found + 10 : found;
+            return found === terms.length ? found + 10 : 0;
+        }
+
+        function scoreGuideMatch(item, query) {
+            const { clean } = parseSearchQueryMode(query);
+            const normalizedQuery = normalizeSearchText(clean).trim();
+            if (normalizedQuery.length < 3) return 0;
+            const rawTerms = normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
+            const terms = rawTerms.filter(term => !SEARCH_STOPWORDS.has(term));
+            if (!terms.length) return 0;
+
+            let keywordHits = 0;
+            (Array.isArray(item.keywords) ? item.keywords : []).forEach(kw => {
+                const normKw = normalizeSearchText(kw).trim();
+                if (!normKw) return;
+                const kwTerms = normKw.split(/\s+/).filter(t => (t.length >= 3 || /\d/.test(t)) && !SEARCH_STOPWORDS.has(t));
+                if (!kwTerms.length) return;
+                if (kwTerms.every(t => searchTermMatches(normalizedQuery, t))) {
+                    keywordHits += kwTerms.length > 1 ? 2 : 1;
+                }
+            });
+
+            const searchable = normalizeSearchText([...(item.keywords || []), item.title, item.norms, item.desc || ''].join(' '));
+            const found = terms.filter(term => searchTermMatches(searchable, term)).length;
+            const allTermsMatch = found === terms.length;
+            const majorityMatch = terms.length >= 3 && found >= 2 && found >= Math.ceil(terms.length * 0.6);
+
+            if (!keywordHits && !allTermsMatch && !majorityMatch) return 0;
+            return (allTermsMatch ? 20 : 0) + keywordHits * 12 + found * 3;
         }
 
         function renderSearchExcerpt(item, query) {
@@ -1396,7 +1426,7 @@
             if (qLower.length < 3) return '';
             // Cerca nel prontuario rapido se esiste una corrispondenza specifica
             const matchedGuide = normativeQuickIndex.map(item => {
-                const score = scoreLooseMatch([...item.keywords, item.title, item.norms].join(' '), qLower);
+                const score = scoreGuideMatch(item, qLower);
                 return { item, score };
             }).filter(row => row.score > 0).sort((a, b) => b.score - a.score)[0]?.item || null;
             // Un riferimento numerico può esistere in più codici: in quel caso
@@ -2234,7 +2264,7 @@
                 if (matchedDoc) { openDetailModal(matchedDoc.id); return; }
 
                 const guideIdx = normativeQuickIndex.map(item => {
-                    const score = scoreLooseMatch([...item.keywords, item.title, item.norms].join(' '), lower);
+                    const score = scoreGuideMatch(item, lower);
                     return { index: normativeQuickIndex.indexOf(item), score };
                 }).filter(row => row.score > 0).sort((a, b) => b.score - a.score)[0]?.index ?? -1;
                 if (guideIdx !== -1) { openGuideModal(guideIdx); return; }
@@ -4468,7 +4498,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.1.8';
+        const APP_VERSION = '1.1.10';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -5463,7 +5493,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.8</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.10</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

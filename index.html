@@ -298,8 +298,12 @@
         const CATEGORY_LABELS = {
             civile: "Diritto Civile & Famiglia", penale: "Codice Penale & Procedura",
             riforme: "Riforme & Processi", pubblico: "Pubblico, Costituzione & Fonti",
-            lavoro: "Lavoro, Tributario & Speciali", notebook: "I Miei Codici (Importati)"
+            lavoro: "Lavoro, Tributario & Speciali", manuali: "Manuali & Dottrina",
+            notebook: "I Miei Codici (Importati)"
         };
+        function isManualDocument(item) {
+            return Boolean(item && (item.docType === 'manual' || item.category === 'manuali'));
+        }
         function openAppDatabase() {
             return new Promise((resolve, reject) => {
                 if (!('indexedDB' in window)) return reject(new Error('IndexedDB non disponibile'));
@@ -955,6 +959,9 @@
             return { abrogated, constitutional };
         }
         function renderStatusBadgesHtml(item) {
+            if (isManualDocument(item)) {
+                return '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-violet-50 text-violet-800 border border-violet-200">Manuale / Dottrina</span>';
+            }
             const st = detectArticleStatus(item);
             let out = '';
             if (st.abrogated) {
@@ -999,15 +1006,16 @@
             nav.classList.remove('hidden');
             prevBtn.disabled = !prev;
             prevBtn.classList.toggle('opacity-50', !prev);
+            const isManualNav = isManualDocument(item);
             prevBtn.innerHTML = prev
                 ? '<i class="fa-solid fa-arrow-left mr-1"></i>' + escapeHtml(shortenLegalLabel(prev.article, 24))
-                : '<i class="fa-solid fa-arrow-left mr-1"></i>Art. precedente';
+                : '<i class="fa-solid fa-arrow-left mr-1"></i>' + (isManualNav ? 'Cap. precedente' : 'Art. precedente');
             prevBtn.onclick = prev ? () => openDetailModal(prev.id) : null;
             nextBtn.disabled = !next;
             nextBtn.classList.toggle('opacity-50', !next);
             nextBtn.innerHTML = next
                 ? escapeHtml(shortenLegalLabel(next.article, 24)) + '<i class="fa-solid fa-arrow-right ml-1"></i>'
-                : 'Art. successivo<i class="fa-solid fa-arrow-right ml-1"></i>';
+                : (isManualNav ? 'Cap. successivo' : 'Art. successivo') + '<i class="fa-solid fa-arrow-right ml-1"></i>';
             nextBtn.onclick = next ? () => openDetailModal(next.id) : null;
         }
         async function saveBookmarkNotes() {
@@ -1579,9 +1587,9 @@
                             `).join("")}
                         </div>
                         <div class="flex items-center gap-2">
-                            <a href="${safeExternalUrl(item.externalUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs font-medium text-slate-500 hover:text-navy-900 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition">
+                            ${item.externalUrl ? `<a href="${safeExternalUrl(item.externalUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs font-medium text-slate-500 hover:text-navy-900 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition">
                                 Fonte <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-[10px]"></i>
-                            </a>
+                            </a>` : ''}
                             <button type="button" data-open-doc="${escapeHtml(item.id)}" class="text-xs font-semibold bg-navy-900 hover:bg-navy-800 text-white px-3.5 py-1.5 rounded-xl transition">
                                 Leggi testo <i class="fa-solid fa-chevron-right ml-1 text-[10px]"></i>
                             </button>
@@ -2357,15 +2365,18 @@
             const normalizeTitle = value => normalizeSearchText(value).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
             const expectedTitle = normalizeTitle(item.title);
             while (expectedTitle && parsedBody.body.firstElementChild && ['H1', 'H2', 'H3', 'P'].includes(parsedBody.body.firstElementChild.tagName) && normalizeTitle(parsedBody.body.firstElementChild.textContent) === expectedTitle) parsedBody.body.firstElementChild.remove();
-            const codeSuffix = { cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.', disp_att_cc: 'disp. att. c.c.', disp_att_cpc: 'disp. att. c.p.c.', disp_att_cpp: 'disp. att. c.p.p.', disp_att_cp: 'disp. att. c.p.' }[getDocumentCodeHint(item)] || '';
-            const resolvedNorm = resolveDocumentNormattivaUrls(item);
+            const isManual = isManualDocument(item);
+            const codeSuffix = isManual ? '' : ({ cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.', disp_att_cc: 'disp. att. c.c.', disp_att_cpc: 'disp. att. c.p.c.', disp_att_cpp: 'disp. att. c.p.p.', disp_att_cp: 'disp. att. c.p.' }[getDocumentCodeHint(item)] || '');
+            const resolvedNorm = isManual ? { reference: item.article || item.title, articleUrl: '' } : resolveDocumentNormattivaUrls(item);
             const articleReference = resolvedNorm.reference;
             const articleNormattivaUrl = resolvedNorm.articleUrl || 'https://www.normattiva.it/ricerca/avanzata';
-            const articleBrocardiUrl = codeSuffix ? getDirectLegalUrl(articleReference || item.article, item.title) : buildBrocardiFallbackSearchUrl(articleReference || item.article, item.title, item.source);
-            const articleNormattivaLabel = getNormattivaButtonLabel(articleReference, articleNormattivaUrl);
-            const articleBrocardiLabel = getBrocardiButtonLabel(articleReference || item.article, articleBrocardiUrl);
+            const articleBrocardiUrl = isManual ? '' : (codeSuffix ? getDirectLegalUrl(articleReference || item.article, item.title) : buildBrocardiFallbackSearchUrl(articleReference || item.article, item.title, item.source));
+            const articleNormattivaLabel = isManual ? '' : getNormattivaButtonLabel(articleReference, articleNormattivaUrl);
+            const externalCheckSection = isManual
+                ? ''
+                : `<section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(buildNormattivaArticleUrn(articleReference) ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference)}${buildNormattivaArticleUrn(articleReference) ? '' : renderNormattivaSearchHint(articleReference)}</section>`;
             const modalBody = document.getElementById("modal-body");
-            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix })}</div><section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(buildNormattivaArticleUrn(articleReference) ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference)}${buildNormattivaArticleUrn(articleReference) ? '' : renderNormattivaSearchHint(articleReference)}</section><section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle()" class="px-3 py-2 rounded-lg bg-violet-700 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega / Schematizza</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; disponibilità, limiti gratuiti ed eventuali costi dipendono dal piano e dal modello." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
+            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix })}</div>${externalCheckSection}<section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle()" class="px-3 py-2 rounded-lg bg-violet-700 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega / Schematizza</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; disponibilità, limiti gratuiti ed eventuali costi dipendono dal piano e dal modello." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
             modalBody.querySelector('[data-copy-search]')?.addEventListener('click', () => copyTextFallback(articleReference));
             document.getElementById("modal-meta").textContent = `Riferimenti: ${item.source}`;
 
@@ -2377,6 +2388,10 @@
             const citationButton = document.getElementById('modal-copy-citation-btn');
             if (citationButton) citationButton.onclick = () => {
                 const consultationDate = new Date().toLocaleDateString('it-IT');
+                if (isManual) {
+                    copyTextFallback(`${item.title} (${item.article}). Fonte: ${item.source || item.categoryLabel}. Consultato il ${consultationDate}.`);
+                    return;
+                }
                 const directUrl = buildNormattivaArticleUrn(articleReference);
                 const normattivaReference = directUrl
                     ? `Normattiva, testo vigente: ${directUrl}`
@@ -3170,6 +3185,9 @@
             const replace = document.getElementById('replace-existing-code'); if (replace) replace.checked = false;
             const singleMode = document.getElementById('update-single-article-mode'); if (singleMode) singleMode.checked = false;
             const singleArticle = document.getElementById('update-single-article'); if (singleArticle) singleArticle.value = '';
+            const codeRadio = document.querySelector('input[name="import-doc-type"][value="code"]');
+            if (codeRadio) codeRadio.checked = true;
+            updateImportDocTypeUI();
             updateSingleArticleModeUI();
             resetImportButton();
             showLayer('import-modal'); title?.focus();
@@ -3186,6 +3204,7 @@
                 output.replaceChildren();
                 const groups = new Map();
                 importedDocs.forEach(doc => {
+                    if (isManualDocument(doc)) return;
                     const source = String(doc.source || doc.categoryLabel || 'Codice senza nome').trim();
                     if (!groups.has(source)) groups.set(source, []);
                     groups.get(source).push(doc);
@@ -3570,7 +3589,7 @@
             const tags = new Map();
             importedDocs.forEach(doc => (Array.isArray(doc.tags) ? doc.tags : []).forEach(tag => {
                 const value = String(tag || '').trim(); const key = normalizeCodeName(value);
-                if (value.length >= 3 && key && !['importato','notebook','civile','penale','pubblico','lavoro','riforme','i miei codici'].includes(key) && !groups.some(group => group.key === key)) tags.set(key, { label: value, count: (tags.get(key)?.count || 0) + 1 });
+                if (value.length >= 3 && key && !['importato','notebook','civile','penale','pubblico','lavoro','riforme','manuali','manuale','epub','i miei codici','manuali dottrina'].includes(key) && !groups.some(group => group.key === key)) tags.set(key, { label: value, count: (tags.get(key)?.count || 0) + 1 });
             }));
             const topics = [...tags.entries()].sort((a,b) => b[1].count-a[1].count).slice(0,8);
             if (quick) quick.innerHTML = groups.slice(0,6).map(group => '<button type="button" data-quick-term="' + safeHtml(group.label) + '" class="px-3 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border border-amber-300/20 transition">' + safeHtml(group.label) + '</button>').join('') + topics.slice(0,4).map(([key,item]) => '<button type="button" data-quick-term="' + safeHtml(item.label) + '" class="px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">' + safeHtml(item.label) + '</button>').join('');
@@ -3631,6 +3650,219 @@
             updateNotebookCountUI(); updateBookmarkUI(); renderResults();
             return prepared.length;
         }
+
+        function getImportDocType() {
+            return document.querySelector('input[name="import-doc-type"]:checked')?.value === 'manual' ? 'manual' : 'code';
+        }
+        function updateImportDocTypeUI() {
+            const isManual = getImportDocType() === 'manual';
+            const catSelect = document.getElementById('import-category-select');
+            if (catSelect && isManual && catSelect.value === 'notebook') catSelect.value = 'manuali';
+            else if (catSelect && !isManual && catSelect.value === 'manuali') catSelect.value = 'notebook';
+            const sourceInput = document.getElementById('import-source-title');
+            if (sourceInput) sourceInput.placeholder = isManual ? 'es. Manuale di Diritto Privato (Torrente)' : 'es. Codice Civile 2026';
+            const rawArea = document.getElementById('import-raw-text');
+            if (rawArea) rawArea.placeholder = isManual
+                ? 'Carica un file .epub / .pdf / .md / .txt oppure incolla qui il testo del manuale diviso in capitoli o paragrafi…'
+                : 'Incolla qui gli articoli (es. Art. 2043 - Risarcimento per fatto illecito. Qualunque fatto doloso o colposo, che cagiona ad altri un danno ingiusto...)...';
+            const singleSection = document.getElementById('update-single-article-mode')?.closest('section');
+            const singleCheckbox = document.getElementById('update-single-article-mode');
+            if (isManual && singleCheckbox?.checked) { singleCheckbox.checked = false; updateSingleArticleModeUI(); }
+            if (singleSection) singleSection.classList.toggle('hidden', isManual);
+            updateImportPreview(document.getElementById('import-raw-text')?.value || '');
+        }
+        async function readZipEntriesFromBuffer(arrayBuffer) {
+            const bytes = new Uint8Array(arrayBuffer);
+            const view = new DataView(arrayBuffer);
+            let eocdOffset = -1;
+            const minOffset = Math.max(0, bytes.length - 65557);
+            for (let pos = bytes.length - 22; pos >= minOffset; pos--) {
+                if (view.getUint32(pos, true) === 0x06054b50) { eocdOffset = pos; break; }
+            }
+            if (eocdOffset < 0) throw new Error('File EPUB non valido o danneggiato (archivio ZIP non riconosciuto).');
+            const totalEntries = view.getUint16(eocdOffset + 10, true);
+            let cdOffset = view.getUint32(eocdOffset + 16, true);
+            const decoder = new TextDecoder('utf-8');
+            const entries = new Map();
+            for (let i = 0; i < totalEntries; i++) {
+                if (cdOffset + 46 > bytes.length || view.getUint32(cdOffset, true) !== 0x02014b50) break;
+                const method = view.getUint16(cdOffset + 10, true);
+                const compSize = view.getUint32(cdOffset + 20, true);
+                const nameLen = view.getUint16(cdOffset + 28, true);
+                const extraLen = view.getUint16(cdOffset + 30, true);
+                const commentLen = view.getUint16(cdOffset + 32, true);
+                const localOffset = view.getUint32(cdOffset + 42, true);
+                const name = decoder.decode(bytes.subarray(cdOffset + 46, cdOffset + 46 + nameLen));
+                entries.set(name, { name, method, compSize, localOffset });
+                cdOffset += 46 + nameLen + extraLen + commentLen;
+            }
+            const getEntryBytes = async entryName => {
+                const entry = entries.get(entryName) || entries.get(decodeURIComponent(entryName || ''));
+                if (!entry) return null;
+                const off = entry.localOffset;
+                if (off + 30 > bytes.length || view.getUint32(off, true) !== 0x04034b50) return null;
+                const localNameLen = view.getUint16(off + 26, true);
+                const localExtraLen = view.getUint16(off + 28, true);
+                const dataStart = off + 30 + localNameLen + localExtraLen;
+                const compressed = bytes.subarray(dataStart, dataStart + entry.compSize);
+                if (entry.method === 0) return compressed;
+                if (entry.method === 8) {
+                    if (typeof DecompressionStream === 'undefined') {
+                        throw new Error('Il browser attuale non supporta DecompressionStream per leggere file EPUB compressi. Aggiorna il browser o converti il manuale in PDF/MD.');
+                    }
+                    const ds = new DecompressionStream('deflate-raw');
+                    const stream = new Blob([compressed]).stream().pipeThrough(ds);
+                    return new Uint8Array(await new Response(stream).arrayBuffer());
+                }
+                throw new Error(`Metodo di compressione ZIP non supportato nell’EPUB (${entry.method}).`);
+            };
+            const getEntryText = async entryName => {
+                const rawBytes = await getEntryBytes(entryName);
+                return rawBytes ? decoder.decode(rawBytes) : '';
+            };
+            return { entries, getEntryBytes, getEntryText };
+        }
+        function resolveZipRelativePath(basePath, relativeHref) {
+            const cleanHref = String(relativeHref || '').split('#')[0].split('?')[0].trim();
+            if (!cleanHref) return '';
+            const baseParts = String(basePath || '').split('/').slice(0, -1).filter(Boolean);
+            const relParts = cleanHref.split('/');
+            const stack = cleanHref.startsWith('/') ? [] : [...baseParts];
+            for (const part of relParts) {
+                if (!part || part === '.') continue;
+                if (part === '..') stack.pop();
+                else stack.push(part);
+            }
+            return stack.join('/');
+        }
+        function splitLongHtmlChapter(title, cleanHtml, maxPlainLen = 18000) {
+            const parsed = new DOMParser().parseFromString(cleanHtml, 'text/html');
+            const totalPlain = (parsed.body.textContent || '').replace(/\s+/g, ' ').trim();
+            if (totalPlain.length <= maxPlainLen) return [{ title, html: parsed.body.innerHTML, plain: totalPlain }];
+            const children = [...parsed.body.children];
+            if (children.length < 2) return [{ title, html: parsed.body.innerHTML, plain: totalPlain }];
+            const parts = [];
+            let currentNodes = [];
+            let currentLen = 0;
+            let currentTitle = title;
+            const flush = () => {
+                if (!currentNodes.length) return;
+                const htmlChunk = currentNodes.map(n => n.outerHTML).join('');
+                const plainChunk = currentNodes.map(n => (n.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' ');
+                if (plainChunk.length >= 25) parts.push({ title: currentTitle, html: htmlChunk, plain: plainChunk });
+                currentNodes = []; currentLen = 0;
+            };
+            children.forEach(node => {
+                const nodeText = (node.textContent || '').replace(/\s+/g, ' ').trim();
+                const isSubHeading = /^H[1-3]$/.test(node.tagName) && nodeText.length > 2 && nodeText.length < 160;
+                if ((isSubHeading && currentLen > 2500) || (currentLen > 0 && currentLen + nodeText.length > maxPlainLen)) {
+                    flush();
+                    currentTitle = isSubHeading ? `${title} — ${nodeText}` : `${title} (parte ${parts.length + 1})`;
+                }
+                currentNodes.push(node);
+                currentLen += nodeText.length;
+            });
+            flush();
+            return parts.length ? parts : [{ title, html: parsed.body.innerHTML, plain: totalPlain }];
+        }
+        async function extractEpubChapters(file) {
+            const buffer = await file.arrayBuffer();
+            const zip = await readZipEntriesFromBuffer(buffer);
+            const encXml = await zip.getEntryText('META-INF/encryption.xml').catch(() => '');
+            if (encXml && /<(?:\w+:)?EncryptedData\b/i.test(encXml)) {
+                const encDoc = new DOMParser().parseFromString(encXml, 'application/xml');
+                const encryptedRefs = [...encDoc.querySelectorAll('CipherReference')].map(el => String(el.getAttribute('URI') || ''));
+                const hasContentDrm = !encryptedRefs.length || encryptedRefs.some(uri => !/\.(?:ttf|otf|woff2?|eot)$/i.test(uri));
+                if (hasContentDrm) {
+                    throw new Error('Questo file EPUB è protetto da DRM e non può essere letto dal browser. Usa un EPUB senza DRM.');
+                }
+            }
+            const containerXml = await zip.getEntryText('META-INF/container.xml');
+            if (!containerXml) throw new Error('File EPUB non valido: META-INF/container.xml mancante.');
+            const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
+            const opfPath = containerDoc.querySelector('rootfile')?.getAttribute('full-path') || '';
+            if (!opfPath) throw new Error('File EPUB non valido: percorso OPF non trovato.');
+            const opfXml = await zip.getEntryText(opfPath);
+            if (!opfXml) throw new Error('Impossibile leggere il sommario interno dell’EPUB (.opf).');
+            const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
+            const bookTitle = (opfDoc.querySelector('title, dc\\:title')?.textContent || '').replace(/\s+/g, ' ').trim();
+            const bookAuthor = (opfDoc.querySelector('creator, dc\\:creator')?.textContent || '').replace(/\s+/g, ' ').trim();
+            const manifest = new Map();
+            opfDoc.querySelectorAll('manifest > item').forEach(item => {
+                const id = item.getAttribute('id');
+                const href = item.getAttribute('href');
+                const mediaType = item.getAttribute('media-type') || '';
+                if (id && href) manifest.set(id, { href, mediaType });
+            });
+            const spineIds = [...opfDoc.querySelectorAll('spine > itemref')].map(ref => ref.getAttribute('idref')).filter(Boolean);
+            const chapters = [];
+            for (const idref of spineIds) {
+                const meta = manifest.get(idref);
+                if (!meta || !/(?:xhtml|html|xml)/i.test(meta.mediaType || meta.href)) continue;
+                const fullPath = resolveZipRelativePath(opfPath, meta.href);
+                const rawHtml = await zip.getEntryText(fullPath).catch(() => '');
+                if (!rawHtml) continue;
+                const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+                doc.querySelectorAll('script, style, nav, svg, img, picture, figure, audio, video, iframe').forEach(el => el.remove());
+                const headingEl = doc.body?.querySelector('h1, h2, h3');
+                const docTitle = (headingEl?.textContent || doc.title || '').replace(/\s+/g, ' ').trim();
+                const cleanHtml = sanitizeImportedHtml(doc.body?.innerHTML || '');
+                const plain = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
+                if (plain.length < 40) continue;
+                const chapterTitle = docTitle || `Capitolo ${chapters.length + 1}`;
+                const splitParts = splitLongHtmlChapter(chapterTitle, cleanHtml);
+                splitParts.forEach(part => chapters.push(part));
+            }
+            if (!chapters.length) throw new Error('Nessun capitolo testuale estratto dall’EPUB.');
+            return { title: bookTitle, author: bookAuthor, chapters };
+        }
+        function splitManualText(raw) {
+            const normalized = String(raw || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').trim();
+            if (!normalized) return [];
+            const headingRe = /^(?:[ \t]*#{1,4}[ \t]+.+|[ \t]*(?:PARTE|CAPITOLO|SEZIONE|TITOLO|PARAGRAFO|MODULO|UNIT[AÀ]|LEZIONE)\b[^\n]{0,120}|[ \t]*§[ \t]*\d+[^\n]{0,120}|[ \t]*\d+(?:\.\d+){0,2}[.)]?[ \t]+[A-ZÀÈÉÌÒÙ][^\n]{3,110})$/gm;
+            const matches = [...normalized.matchAll(headingRe)];
+            const rawSections = [];
+            if (matches.length >= 2) {
+                if (matches[0].index > 80) {
+                    const intro = normalized.slice(0, matches[0].index).trim();
+                    if (intro.length > 30) rawSections.push(intro);
+                }
+                for (let i = 0; i < matches.length; i++) {
+                    const start = matches[i].index;
+                    const end = i + 1 < matches.length ? matches[i + 1].index : normalized.length;
+                    const part = normalized.slice(start, end).trim();
+                    if (part.length > 20) rawSections.push(part);
+                }
+            } else {
+                rawSections.push(normalized);
+            }
+            // Suddivide blocchi troppo lunghi a fine paragrafo (~3.800 caratteri)
+            const finalSections = [];
+            const MAX_LEN = 3800;
+            rawSections.forEach(sec => {
+                if (sec.length <= MAX_LEN) { finalSections.push(sec); return; }
+                const lines = sec.split(/\n+/);
+                const baseHeading = lines[0]?.trim() || '';
+                const paragraphs = sec.split(/\n\s*\n+/).map(p => p.trim()).filter(Boolean);
+                const units = paragraphs.length > 1 ? paragraphs : lines.map(l => l.trim()).filter(Boolean);
+                let buf = '';
+                let partIdx = 0;
+                const pushBuf = () => {
+                    if (!buf.trim()) return;
+                    partIdx++;
+                    const prefix = (partIdx > 1 && baseHeading && !buf.startsWith(baseHeading)) ? `${baseHeading} (parte ${partIdx})\n\n` : '';
+                    finalSections.push((prefix + buf).trim());
+                    buf = '';
+                };
+                units.forEach(u => {
+                    if (buf && (buf.length + u.length + 2) > MAX_LEN) pushBuf();
+                    buf = buf ? (buf + '\n\n' + u) : u;
+                });
+                pushBuf();
+            });
+            return finalSections.filter(s => s.length > 15);
+        }
+
         async function extractPdfText(file) {
             if (!window.pdfjsLib) throw new Error('Lettore PDF non disponibile. Controlla la connessione e ricarica la pagina.');
             const data = new Uint8Array(await file.arrayBuffer());
@@ -3766,6 +3998,48 @@
             const sourceProvided = Boolean(sourceManuallyEdited && title && title.value.trim());
             if (title && (!sourceManuallyEdited || !title.value.trim())) title.value = file.name.replace(/\.[^/.]+$/, '');
             try {
+                if (file.name.toLowerCase().endsWith('.epub')) {
+                    const manualRadio = document.querySelector('input[name="import-doc-type"][value="manual"]');
+                    if (manualRadio) manualRadio.checked = true;
+                    updateImportDocTypeUI();
+                    isImporting = true;
+                    setImportBusy('Lettura EPUB…', 'Sto estraendo i capitoli dal file EPUB offline…');
+                    try {
+                        const epub = await extractEpubChapters(file);
+                        const defaultName = [epub.title, epub.author].filter(Boolean).join(' — ') || file.name.replace(/\.[^/.]+$/, '');
+                        const chosenSource = (sourceProvided ? title.value.trim() : defaultName) || 'Manuale EPUB';
+                        if (title && !sourceProvided) title.value = chosenSource;
+                        const selectedCat = document.getElementById('import-category-select')?.value || 'manuali';
+                        const catLabel = CATEGORY_LABELS[selectedCat] || 'Manuali & Dottrina';
+                        const entries = epub.chapters.map((ch, idx) => ({
+                            id: 'epub-' + idx,
+                            orderIndex: idx,
+                            docType: 'manual',
+                            category: selectedCat,
+                            categoryLabel: catLabel,
+                            article: 'Cap. ' + (idx + 1),
+                            title: String(ch.title || ('Capitolo ' + (idx + 1))).slice(0, 160),
+                            source: chosenSource,
+                            tags: [selectedCat, 'manuale', 'epub', 'importato', chosenSource.toLowerCase()],
+                            summary: String(ch.plain || ch.title || '').slice(0, 260),
+                            fullText: '<h3>' + safeHtml(ch.title || ('Capitolo ' + (idx + 1))) + '</h3>' + ch.html,
+                            externalUrl: ''
+                        }));
+                        const count = await applyImportedDocs(entries, chosenSource);
+                        event.target.value = '';
+                        const tab = document.querySelector('.cat-tab[data-cat="' + selectedCat + '"]'); if (tab) tab.click();
+                        closeImportModal();
+                        showToast('EPUB importato: ' + count.toLocaleString('it-IT') + ' capitoli/sezioni salvati.');
+                    } catch (error) {
+                        showToast(error.message || 'Importazione EPUB non riuscita.');
+                        const status = document.getElementById('import-status');
+                        if (status) { status.textContent = error.message || 'Importazione EPUB non riuscita.'; status.classList.remove('hidden'); }
+                    } finally {
+                        isImporting = false;
+                        resetImportButton();
+                    }
+                    return;
+                }
                 if (file.name.toLowerCase().endsWith('.pdf')) {
                     showToast('Lettura del PDF in corso…');
                     const result = await extractPdfText(file);
@@ -3842,12 +4116,18 @@
         }
         function updateImportPreview(raw) {
             const status = document.getElementById('import-status'); const label = document.getElementById('import-button-label');
-            const count = splitLegalText(raw).length;
-            const singleUpdate = document.getElementById('update-single-article-mode')?.checked === true;
+            const isManual = getImportDocType() === 'manual';
+            const count = (isManual ? splitManualText(raw) : splitLegalText(raw)).length;
+            const singleUpdate = !isManual && document.getElementById('update-single-article-mode')?.checked === true;
             const target = document.getElementById('update-single-article')?.value.trim();
             if (singleUpdate) {
                 if (status) { status.textContent = count ? 'Modalità articolo singolo: verrà aggiornato solo ' + (target || 'l’articolo indicato') + ' nel codice selezionato; le altre voci resteranno invariate.' : 'Seleziona il codice e indica l’articolo da aggiornare, poi carica o incolla il testo nuovo.'; status.classList.remove('hidden'); }
                 if (label) label.textContent = target ? 'Aggiorna Art. ' + target.replace(/^art(?:icolo)?\.?\s*/i, '') : 'Aggiorna un articolo';
+                return;
+            }
+            if (isManual) {
+                if (status) { status.textContent = count > 0 ? 'Manuale pronto: suddiviso in ' + count.toLocaleString('it-IT') + (count === 1 ? ' sezione' : ' capitoli/sezioni') + '. Premi il pulsante arancione per salvare.' : ''; status.classList.toggle('hidden', count === 0); }
+                if (label) label.textContent = count > 1 ? 'Importa ' + count.toLocaleString('it-IT') + ' sezioni' : 'Importa Manuale';
                 return;
             }
             if (status) { status.textContent = count > 1 ? 'Testo pronto: individuati ' + count.toLocaleString('it-IT') + ' articoli. Premi il pulsante arancione per salvarli.' : count === 1 ? 'Testo pronto: non sono state riconosciute intestazioni di articoli; verrà importato come una voce unica. Premi il pulsante arancione per salvarlo.' : ''; status.classList.toggle('hidden', count === 0); }
@@ -3877,9 +4157,10 @@
             if (isImporting) return;
             const raw = document.getElementById('import-raw-text').value.trim();
             if (!raw) return showToast('Incolla o carica il testo da importare.');
-            const cat = document.getElementById('import-category-select').value || 'notebook';
-            const source = document.getElementById('import-source-title').value.trim() || CATEGORY_LABELS[cat] || 'Codice importato';
-            const singleUpdate = document.getElementById('update-single-article-mode')?.checked === true;
+            const isManual = getImportDocType() === 'manual';
+            const cat = document.getElementById('import-category-select').value || (isManual ? 'manuali' : 'notebook');
+            const source = document.getElementById('import-source-title').value.trim() || CATEGORY_LABELS[cat] || (isManual ? 'Manuale importato' : 'Codice importato');
+            const singleUpdate = !isManual && document.getElementById('update-single-article-mode')?.checked === true;
             const updateCodeKey = document.getElementById('update-single-code')?.value || '';
             const updateArticleText = document.getElementById('update-single-article')?.value || '';
             const target = normalizeArticleIdentifier(updateArticleText);
@@ -3888,11 +4169,11 @@
                 if (!target) return showToast('Indica il numero dell’articolo da aggiornare.');
             }
             const docs = []; isImporting = true; resultsLimit = 100;
-            setImportBusy('Analisi in corso…', 'Sto analizzando il testo e individuando gli articoli. Attendi qualche istante.');
+            setImportBusy('Analisi in corso…', isManual ? 'Sto suddividendo il manuale in capitoli e sezioni…' : 'Sto analizzando il testo e individuando gli articoli. Attendi qualche istante.');
             let importError = '';
             try {
                 await new Promise(resolve => setTimeout(resolve, 20));
-                let chunks = splitLegalText(raw);
+                let chunks = isManual ? splitManualText(raw) : splitLegalText(raw);
                 if (singleUpdate) {
                     chunks = chunks.filter(chunk => {
                         const first = chunk.split(/\n+/).map(line => line.trim()).find(Boolean) || '';
@@ -3901,22 +4182,42 @@
                     }).sort((a, b) => b.length - a.length).slice(0, 1);
                     if (!chunks.length) throw new Error('Nel testo caricato non trovo l’articolo ' + updateArticleText + '. Nessun articolo è stato modificato.');
                 }
-                setImportBusy('Testo analizzato…', 'Individuati ' + chunks.length.toLocaleString('it-IT') + ' articoli. Ora preparo il salvataggio.', 0);
+                setImportBusy('Testo analizzato…', 'Individuate ' + chunks.length.toLocaleString('it-IT') + (isManual ? ' sezioni. ' : ' voci. ') + 'Ora preparo il salvataggio.', 0);
                 await new Promise(resolve => setTimeout(resolve, 20));
                 const batchSize = 100;
                 for (let start = 0; start < chunks.length; start += batchSize) {
                     const batch = chunks.slice(start, start + batchSize);
                     batch.forEach((chunk, offset) => {
                         const i = start + offset; const lines = chunk.split(/\n+/).map(s => s.trim()).filter(Boolean); const first = lines[0] || source;
-                        const dispHint = getReferenceCodeHint(source);
-                        const dispSuffix = ({ disp_att_cc: ' disp. att. c.c.', disp_att_cpc: ' disp. att. c.p.c.', disp_att_cpp: ' disp. att. c.p.p.', disp_att_cp: ' disp. att. c.p.' })[dispHint] || '';
-                        const extractedHeading = extractArticleHeading(first);
-                        const article = extractedHeading
-                            ? (extractedHeading + (dispSuffix && !/disp\.?\s*att\.?/i.test(extractedHeading) ? dispSuffix : ''))
-                            : (source + ' #' + (i + 1));
+                        const cleanFirst = first.replace(/^\s{0,3}#{1,6}\s*/, '').trim();
+                        let article;
+                        if (isManual) {
+                            const capMatch = cleanFirst.match(/^(?:PARTE|CAPITOLO|SEZIONE|PARAGRAFO|§)\s*[\w.-]+/i);
+                            article = capMatch ? capMatch[0].slice(0, 28) : ('Sez. ' + (i + 1));
+                        } else {
+                            const dispHint = getReferenceCodeHint(source);
+                            const dispSuffix = ({ disp_att_cc: ' disp. att. c.c.', disp_att_cpc: ' disp. att. c.p.c.', disp_att_cpp: ' disp. att. c.p.p.', disp_att_cp: ' disp. att. c.p.' })[dispHint] || '';
+                            const extractedHeading = extractArticleHeading(first);
+                            article = extractedHeading
+                                ? (extractedHeading + (dispSuffix && !/disp\.?\s*att\.?/i.test(extractedHeading) ? dispSuffix : ''))
+                                : (source + ' #' + (i + 1));
+                        }
                         const plain = chunk.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                         const bodySummary = lines.slice(1).join(' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                        docs.push({ id: 'temp-' + i, orderIndex: i, category: cat, categoryLabel: CATEGORY_LABELS[cat] || 'I Miei Codici (Importati)', article, title: first.slice(0, 120), source, tags: [cat, 'importato', source.toLowerCase()], summary: (bodySummary || plain).slice(0, 260), fullText: '<h3>' + formatImportedMarkdownInline(first.replace(/^\s{0,3}#{1,6}\s*/, '')) + '</h3>' + lines.slice(1).map(line => '<p>' + formatImportedMarkdownInline(line.replace(/^\s*[-*+]\s+/, '• ')) + '</p>').join(''), externalUrl: 'https://www.normattiva.it/' });
+                        docs.push({
+                            id: 'temp-' + i,
+                            orderIndex: i,
+                            docType: isManual ? 'manual' : 'code',
+                            category: cat,
+                            categoryLabel: CATEGORY_LABELS[cat] || (isManual ? 'Manuali & Dottrina' : 'I Miei Codici (Importati)'),
+                            article,
+                            title: cleanFirst.slice(0, 140),
+                            source,
+                            tags: isManual ? [cat, 'manuale', 'importato', source.toLowerCase()] : [cat, 'importato', source.toLowerCase()],
+                            summary: (bodySummary || plain).slice(0, 260),
+                            fullText: '<h3>' + formatImportedMarkdownInline(cleanFirst) + '</h3>' + lines.slice(1).map(line => '<p>' + formatImportedMarkdownInline(line.replace(/^\s*[-*+]\s+/, '• ')) + '</p>').join(''),
+                            externalUrl: isManual ? '' : 'https://www.normattiva.it/'
+                        });
                     });
                     const prepared = Math.min(start + batch.length, chunks.length); const percent = Math.round(prepared / Math.max(chunks.length, 1) * 100);
                     setImportBusy('Preparazione ' + percent + '%', 'Preparati ' + prepared.toLocaleString('it-IT') + ' di ' + chunks.length.toLocaleString('it-IT') + ' articoli…', percent);
@@ -4056,7 +4357,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.1.5';
+        const APP_VERSION = '1.1.6';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -4410,6 +4711,9 @@
             <button data-cat="lavoro" class="cat-tab px-4 py-2 rounded-xl text-sm font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition whitespace-nowrap">
                 <i class="fa-solid fa-briefcase mr-1.5 text-indigo-500"></i>Lavoro, Tributario & Speciali
             </button>
+            <button data-cat="manuali" class="cat-tab px-4 py-2 rounded-xl text-sm font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition whitespace-nowrap">
+                <i class="fa-solid fa-book-open-reader mr-1.5 text-violet-600"></i>Manuali & Dottrina
+            </button>
             <button data-cat="notebook" class="cat-tab px-4 py-2 rounded-xl text-sm font-medium bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 transition whitespace-nowrap">
                 <i class="fa-solid fa-book-journal-whills mr-1.5 text-amber-600"></i>I Miei Codici (<span id="notebook-tab-count">0</span>)
             </button>
@@ -4601,7 +4905,7 @@
                     <i class="fa-solid fa-file-import text-amber-400"></i>
                     <div>
                         <h3 id="import-modal-title" class="font-bold text-base leading-tight">Importa Codici e Dati Normativi</h3>
-                        <p class="text-[11px] text-slate-300">Carica JSON ufficiali da dati.normattiva.it, PDF testuali o archivi (.json, .txt, .md)</p>
+                        <p class="text-[11px] text-slate-300">Carica JSON da dati.normattiva.it, manuali (.epub, .pdf, .md, .txt) o archivi</p>
                     </div>
                 </div>
                 <button onclick="closeImportModal()" aria-label="Chiudi finestra importazione" class="text-slate-300 hover:text-white p-1.5">
@@ -4611,8 +4915,22 @@
 
             <div class="p-6 overflow-y-auto space-y-4 text-sm">
                 <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 leading-relaxed">
-                    <strong>Importazione intelligente:</strong> Seleziona la materia di destinazione, carica un file (<code>.pdf</code> testuale, <code>.json</code>, <code>.txt</code> / <code>.md</code>) o incolla il testo degli articoli (es. <code>Art. 2043 c.c.</code>, <code>Art. 575 c.p.</code>). Gli articoli verranno suddivisi automaticamente e resi subito ricercabili.
+                    <strong>Importazione intelligente:</strong> Scegli se stai importando un <strong>Codice / Legge</strong> (JSON di Normattiva, PDF, TXT, MD) oppure un <strong>Manuale / Dispensa</strong> (<strong><code>.epub</code> senza DRM</strong>, <code>.pdf</code> testuale, <code>.md</code>, <code>.txt</code>). I rinvii normativi dentro i manuali restano cliccabili.
                 </div>
+
+                <fieldset class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <legend class="px-1 text-xs font-bold text-slate-700">Tipo di documento</legend>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <label class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-700 cursor-pointer">
+                            <input type="radio" name="import-doc-type" value="code" checked onchange="updateImportDocTypeUI()" class="mt-0.5 accent-amber-600">
+                            <span><strong>Codice / Legge</strong><span class="block mt-0.5 text-[11px] text-slate-500">Divide per articoli (JSON Normattiva, PDF, TXT, MD)</span></span>
+                        </label>
+                        <label class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-700 cursor-pointer">
+                            <input type="radio" name="import-doc-type" value="manual" onchange="updateImportDocTypeUI()" class="mt-0.5 accent-amber-600">
+                            <span><strong>Manuale / Dispensa</strong><span class="block mt-0.5 text-[11px] text-slate-500">Divide per capitoli e sezioni (EPUB, PDF, MD, TXT)</span></span>
+                        </label>
+                    </div>
+                </fieldset>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
@@ -4623,6 +4941,7 @@
                             <option value="pubblico">Diritto Pubblico / Cost.</option>
                             <option value="lavoro">Lavoro / Tributario</option>
                             <option value="riforme">Riforme & Processi</option>
+                            <option value="manuali">Manuali & Dottrina</option>
                             <option value="notebook" selected>I Miei Codici (Raccolta)</option>
                         </select>
                     </div>
@@ -4631,8 +4950,8 @@
                         <input type="text" id="import-source-title" placeholder="es. Codice Civile 2026" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-amber-500">
                     </div>
                     <div>
-                        <label for="import-file-input" class="block text-xs font-semibold text-slate-700 mb-1">Carica file (.pdf, .json, .txt, .md)</label>
-                        <input type="file" id="import-file-input" accept=".pdf,.txt,.md,.json,application/pdf" onchange="handleNotebookFileUpload(event)" class="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-navy-900 file:text-white hover:file:bg-navy-800 cursor-pointer">
+                        <label for="import-file-input" class="block text-xs font-semibold text-slate-700 mb-1">Carica file (.epub, .pdf, .json, .txt, .md)</label>
+                        <input type="file" id="import-file-input" accept=".epub,.pdf,.txt,.md,.json,application/pdf,application/epub+zip" onchange="handleNotebookFileUpload(event)" class="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-navy-900 file:text-white hover:file:bg-navy-800 cursor-pointer">
                     </div>
                 </div>
 
@@ -4927,7 +5246,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.5</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.6</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

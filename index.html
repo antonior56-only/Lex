@@ -288,6 +288,15 @@
         let currentCategory = "all";
         let currentSourceFilter = "";
         let showImportedOnly = false;
+        let exactPhraseOnly = false;
+        const SEARCH_STOPWORDS = new Set(['del','dello','della','dei','degli','delle','nel','nello','nella','nei','negli','nelle','sul','sullo','sulla','sui','sugli','sulle','dal','dallo','dalla','dai','dagli','dalle','allo','alla','alle','agli','con','per','tra','fra','che','una','uno','gli','non']);
+        function parseSearchQueryMode(query) {
+            const raw = String(query || '').trim();
+            const quoted = raw.match(/^(?:"([^"]+)"|«([^»]+)»|“([^”]+)”)$/);
+            const isExact = Boolean(exactPhraseOnly || quoted);
+            const clean = (quoted ? (quoted[1] || quoted[2] || quoted[3] || '') : raw).trim();
+            return { isExact, clean };
+        }
         let currentQuery = "";
         let resultsLimit = 100;
         let searchDebounceTimer = null;
@@ -530,7 +539,7 @@
                             .replace(/(^|[^a-z])c\\s*\\.?\\s*p\\s*\\.?(?=$|[^a-z])/g, '$1 codice penale ')
                             .replace(/(^|[^a-z])cost\\s*\\.?(?=$|[^a-z])/g, '$1 costituzione ')
                             .replace(/(^|[^a-z])d\\s*\\.?\\s*l\\s*\\.?\\s*g\\s*\\.?\\s*s\\s*\\.?(?=$|[^a-z])/g, '$1 decreto legislativo ')
-                            .replace(/(^|[^a-z])d\\s*\\.?\\s*p\\s*\\.?\\s*r\\s*\\.?(?=$|[^a-z])/g, '$1 decreto del presidente della repubblica ')
+                            .replace(/(^|[^a-z])d\\s*\\.?\\s*p\\s*\\.?\\s*r\\s*\\.?(?=$|[^a-z])/g, '$1 dpr ').replace(/\\bdecreto\\s+del\\s+presidente\\s+della\\s+repubblica\\b/g, 'dpr decreto del presidente della repubblica')
                             .replace(/(^|[^a-z])d\\s*\\.?\\s*l\\s*\\.?(?=$|[^a-z])/g, '$1 decreto legge ')
                             .replace(/(^|[^a-z])(?:l|legge)\\s*\\.?(?=\\s|$)/g, '$1 legge ')
                             .replace(/(^|[^a-z])art(?:icolo)?\\s*\\.?(?=$|[^a-z])/g, '$1articolo')
@@ -602,10 +611,13 @@
         }
         function getCandidateDocumentsForQuery(documents, query, extraTerms = []) {
             if (!invertedSearchIndex || searchIndexDocsRef !== documents) return documents;
-            const normQ = normalizeSearchText(query).trim();
+            const { clean } = parseSearchQueryMode(query);
+            const normQ = normalizeSearchText(clean).trim();
             if (normQ.length < 2) return documents;
             const collectIdsForPhrase = phrase => {
-                const terms = normalizeSearchText(phrase).trim().split(/[^a-z0-9-]+/).filter(t => t.length >= 3 || /\d/.test(t));
+                const rawTerms = normalizeSearchText(phrase).trim().split(/[^a-z0-9-]+/).filter(t => t.length >= 3 || /\d/.test(t));
+                const meaningful = rawTerms.filter(t => !SEARCH_STOPWORDS.has(t));
+                const terms = meaningful.length ? meaningful : rawTerms;
                 if (!terms.length) return null;
                 let current = null;
                 for (const term of terms) {
@@ -897,10 +909,19 @@
             return corrected.size;
         }
         function scoreDocument(item, query) {
-            const terms = normalizeSearchText(query).split(/\s+/).filter(term => term.length > 1);
+            const { clean } = parseSearchQueryMode(query);
+            const normQuery = normalizeSearchText(clean);
+            const rawTerms = normQuery.split(/\s+/).filter(term => term.length > 1);
+            const meaningful = rawTerms.filter(t => !SEARCH_STOPWORDS.has(t));
+            const terms = meaningful.length ? meaningful : rawTerms;
             if (!terms.length) return 0;
             const index = getDocumentSearchIndex(item);
             let score = terms.reduce((total, term) => total + (searchTermMatches(index.article, term) ? 12 : 0) + (searchTermMatches(index.title, term) ? 8 : 0) + (searchTermMatches(index.tags, term) ? 5 : 0) + (searchTermMatches(index.summary, term) ? 3 : 0) + (searchTermMatches(index.text, term) ? 1 : 0), 0);
+            if (rawTerms.length > 1 && normQuery) {
+                if (index.title.includes(normQuery) || index.article.includes(normQuery)) score += 80;
+                else if (index.summary.includes(normQuery)) score += 55;
+                else if (index.text.includes(normQuery)) score += 45;
+            }
             const queryArticle = normalizeArticleIdentifier(query);
             if (queryArticle && /^\s*(?:art(?:icolo)?\.?\s*)?\d+(?:\s*-?\s*(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies))?(?:\s*\.\s*\d+)?(?:\s*(?:c\.c\.|c\.p\.|c\.p\.c\.|c\.p\.p\.|cost\.)\s*)?$/i.test(String(query || ''))
                 && normalizeArticleIdentifier(item.article) === queryArticle) score += 30;
@@ -914,7 +935,7 @@
                 .replace(/(^|[^a-z])c\s*\.?\s*p\s*\.?(?=$|[^a-z])/g, '$1 codice penale ')
                 .replace(/(^|[^a-z])cost\s*\.?(?=$|[^a-z])/g, '$1 costituzione ')
                 .replace(/(^|[^a-z])d\s*\.?\s*l\s*\.?\s*g\s*\.?\s*s\s*\.?(?=$|[^a-z])/g, '$1 decreto legislativo ')
-                .replace(/(^|[^a-z])d\s*\.?\s*p\s*\.?\s*r\s*\.?(?=$|[^a-z])/g, '$1 decreto del presidente della repubblica ')
+                .replace(/(^|[^a-z])d\s*\.?\s*p\s*\.?\s*r\s*\.?(?=$|[^a-z])/g, '$1 dpr ').replace(/\bdecreto\s+del\s+presidente\s+della\s+repubblica\b/g, 'dpr decreto del presidente della repubblica')
                 .replace(/(^|[^a-z])d\s*\.?\s*l\s*\.?(?=$|[^a-z])/g, '$1 decreto legge ')
                 .replace(/(^|[^a-z])(?:l|legge)\s*\.?(?=\s|$)/g, '$1 legge ')
                 .replace(/(^|[^a-z])art(?:icolo)?\s*\.?(?=$|[^a-z])/g, '$1articolo')
@@ -1139,10 +1160,13 @@
         function highlightText(text, query) {
             const source = String(text || '');
             if (!query) return escapeHtml(source);
-            const normalizedQuery = normalizeSearchText(query).trim();
-            const terms = [...new Set(normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term)))];
-            if (!terms.length && normalizedQuery) terms.push(normalizedQuery);
-            if (!terms.length) return escapeHtml(source);
+            const { isExact, clean } = parseSearchQueryMode(query);
+            const normalizedQuery = normalizeSearchText(clean).trim();
+            if (!normalizedQuery) return escapeHtml(source);
+            const rawTerms = [...new Set(normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term)))];
+            const meaningful = rawTerms.filter(t => !SEARCH_STOPWORDS.has(t));
+            const terms = isExact ? [normalizedQuery] : (meaningful.length ? meaningful : rawTerms);
+            if (!terms.length) terms.push(normalizedQuery);
             let normalizedSource = '', sourceStarts = [], sourceEnds = [], offset = 0;
             for (const character of source) {
                 const normalizedCharacter = character.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`´]/g, "'").toLowerCase();
@@ -1175,7 +1199,7 @@
                 [/(^|[^a-z])c\s*\.?\s*p\s*\.?(?=$|[^a-z])/g, m => m[1] + ' codice penale '],
                 [/(^|[^a-z])cost\s*\.?(?=$|[^a-z])/g, m => m[1] + ' costituzione '],
                 [/(^|[^a-z])d\s*\.?\s*l\s*\.?\s*g\s*\.?\s*s\s*\.?(?=$|[^a-z])/g, m => m[1] + ' decreto legislativo '],
-                [/(^|[^a-z])d\s*\.?\s*p\s*\.?\s*r\s*\.?(?=$|[^a-z])/g, m => m[1] + ' decreto del presidente della repubblica '],
+                [/(^|[^a-z])d\s*\.?\s*p\s*\.?\s*r\s*\.?(?=$|[^a-z])/g, m => m[1] + ' dpr '],
                 [/(^|[^a-z])d\s*\.?\s*l\s*\.?(?=$|[^a-z])/g, m => m[1] + ' decreto legge '],
                 [/(^|[^a-z])(?:l|legge)\s*\.?(?=\s|$)/g, m => m[1] + ' legge '],
                 [/(^|[^a-z])art(?:icolo)?\s*\.?(?=$|[^a-z])/g, m => m[1] + 'articolo'],
@@ -1226,9 +1250,16 @@
             return stem !== term && new RegExp('(?:^|[^a-z0-9])' + stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(normalizedText);
         }
         function matchesNormalizedSearchQuery(normalizedText, query) {
-            const normalizedQuery = normalizeSearchText(query).trim();
+            const { isExact, clean } = parseSearchQueryMode(query);
+            const normalizedQuery = normalizeSearchText(clean).trim();
             if (normalizedQuery.length < 2) return false;
-            const terms = normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
+            if (isExact) {
+                const escaped = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return new RegExp('(?:^|[^a-z0-9])' + escaped + '(?=$|[^a-z0-9])').test(normalizedText);
+            }
+            const rawTerms = normalizedQuery.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
+            const meaningful = rawTerms.filter(t => !SEARCH_STOPWORDS.has(t));
+            const terms = meaningful.length ? meaningful : rawTerms;
             if (!terms.length) return normalizedText.includes(normalizedQuery);
             return terms.every(term => searchTermMatches(normalizedText, term));
         }
@@ -1258,9 +1289,14 @@
                 for (const part of normalized) { normalizedBody += part; starts.push(offset); ends.push(offset + character.length); }
                 offset += character.length;
             }
-            const terms = normalizeSearchText(query).split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
-            let position = -1;
-            for (const term of terms) {
+            const { clean } = parseSearchQueryMode(query);
+            const normPhrase = normalizeSearchText(clean).trim();
+            const rawTerms = normPhrase.split(/\s+/).filter(term => term.length >= 3 || /\d/.test(term));
+            const meaningful = rawTerms.filter(t => !SEARCH_STOPWORDS.has(t));
+            const terms = meaningful.length ? meaningful : rawTerms;
+            let position = normPhrase.length >= 3 ? normalizedBody.indexOf(normPhrase) : -1;
+            let matchedLen = position >= 0 ? normPhrase.length : 1;
+            if (position < 0) for (const term of terms) {
                 position = normalizedBody.indexOf(term);
                 if (position < 0 && term.length >= 6) {
                     let stem = term.endsWith('zioni') || term.endsWith('zione') ? term.slice(0, -1) : /[aeio]$/.test(term) ? term.slice(0, -1) : term;
@@ -1270,7 +1306,7 @@
             }
             if (position < 0) return highlightText(summary, query);
             const originalStart = Math.max(0, (starts[position] ?? 0) - 90);
-            const matchEnd = ends[Math.min(ends.length - 1, position + Math.max(1, terms.find(term => normalizedBody.indexOf(term) === position)?.length || 1) - 1)] ?? originalStart;
+            const matchEnd = ends[Math.min(ends.length - 1, position + Math.max(1, matchedLen > 1 ? matchedLen : (terms.find(term => normalizedBody.indexOf(term) === position)?.length || 1)) - 1)] ?? originalStart;
             const originalEnd = Math.min(index.bodyText.length, Math.max(originalStart + 220, matchEnd + 120));
             const excerpt = (originalStart > 0 ? '…' : '') + index.bodyText.slice(originalStart, originalEnd).trim() + (originalEnd < index.bodyText.length ? '…' : '');
             return highlightText(excerpt, query);
@@ -1521,13 +1557,16 @@
                 dynamicBox.classList.add("hidden");
             }
 
-            const importedIds = showImportedOnly ? new Set(importedDocs.map(item => item.id)) : null;
+            const importedIds = (showImportedOnly || currentSourceFilter === '__ALL_CODES__' || currentSourceFilter === '__ALL_MANUALS__') ? new Set(importedDocs.map(item => item.id)) : null;
             const allDocs = getAllDocuments();
             const candidatePool = q.trim().length >= 2 ? getCandidateDocumentsForQuery(allDocs, q, aiSearchTerms) : allDocs;
             let filtered = candidatePool.filter(item => {
-                if (importedIds && !importedIds.has(item.id)) return false;
+                if (showImportedOnly && importedIds && !importedIds.has(item.id)) return false;
                 const matchesCategory = currentCategory === "all" || item.category === currentCategory;
-                const matchesSource = !currentSourceFilter || normalizeCodeName(item.source || item.categoryLabel) === currentSourceFilter;
+                const matchesSource = !currentSourceFilter
+                    || (currentSourceFilter === '__ALL_CODES__' ? (importedIds.has(item.id) && !isManualDocument(item))
+                        : currentSourceFilter === '__ALL_MANUALS__' ? (importedIds.has(item.id) && isManualDocument(item))
+                        : normalizeCodeName(item.source || item.categoryLabel) === currentSourceFilter);
                 if (!matchesCategory || !matchesSource) return false;
                 if (!q) return true;
 
@@ -3471,8 +3510,10 @@
             importedDocs.forEach(doc => {
                 const label = String(doc.source || doc.categoryLabel || 'Codice importato').trim();
                 const key = normalizeCodeName(label) || 'codice importato';
-                if (!groups.has(key)) groups.set(key, { key, label, docs: [] });
-                groups.get(key).docs.push(doc);
+                if (!groups.has(key)) groups.set(key, { key, label, docs: [], isManual: true });
+                const g = groups.get(key);
+                g.docs.push(doc);
+                if (!isManualDocument(doc)) g.isManual = false;
             });
             return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label, 'it'));
         }
@@ -3582,16 +3623,48 @@
             document.getElementById('archive-panel').open = true;
             renderResults();
         }
+        function setExactPhraseOnly(value) {
+            exactPhraseOnly = Boolean(value);
+            document.getElementById('archive-panel').open = true;
+            renderResults();
+        }
         function renderImportedSourceFilters() {
             const box = document.getElementById('imported-source-filters'); if (!box) return;
             const groups = getImportedCodeGroups();
             if (!groups.length) { box.innerHTML = ''; box.classList.add('hidden'); return; }
+            const codeGroups = groups.filter(g => !g.isManual);
+            const manualGroups = groups.filter(g => g.isManual);
             box.classList.remove('hidden');
-            const active = (key) => currentSourceFilter === key ? 'bg-navy-900 text-white border-navy-900' : 'bg-white text-slate-700 border-slate-200 hover:border-amber-400';
-            box.innerHTML = '<span class="text-xs font-semibold text-slate-500 mr-1">Filtra per codice:</span>' +
-                '<button type="button" data-source-filter="" class="px-3 py-1.5 rounded-lg border text-xs font-semibold ' + active('') + '">Tutti</button>' +
-                groups.map(group => '<button type="button" data-source-filter="' + safeHtml(group.key) + '" title="' + safeHtml(group.label) + '" class="px-3 py-1.5 rounded-lg border text-xs font-semibold ' + active(group.key) + '">' + safeHtml(group.label) + ' <span class="opacity-70">' + group.docs.length.toLocaleString('it-IT') + '</span></button>').join('');
-            box.querySelectorAll('[data-source-filter]').forEach(button => button.addEventListener('click', () => setImportedSourceFilter(button.dataset.sourceFilter)));
+            const selectedCode = (currentSourceFilter === '__ALL_CODES__' || codeGroups.some(g => g.key === currentSourceFilter)) ? currentSourceFilter : '';
+            const selectedManual = (currentSourceFilter === '__ALL_MANUALS__' || manualGroups.some(g => g.key === currentSourceFilter)) ? currentSourceFilter : '';
+            const totalCodeDocs = codeGroups.reduce((sum, g) => sum + g.docs.length, 0);
+            const totalManualDocs = manualGroups.reduce((sum, g) => sum + g.docs.length, 0);
+            const parts = [];
+            if (codeGroups.length) {
+                parts.push(
+                    '<div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">'
+                    + '<label for="imported-code-filter-select" class="text-xs font-semibold text-slate-700 shrink-0"><i class="fa-solid fa-scale-balanced mr-1.5 text-amber-600"></i>Codici:</label>'
+                    + '<select id="imported-code-filter-select" class="flex-1 min-w-0 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-amber-500">'
+                    + '<option value="">Tutti (' + codeGroups.length + ')</option>'
+                    + (manualGroups.length ? '<option value="__ALL_CODES__"' + (selectedCode === '__ALL_CODES__' ? ' selected' : '') + '>Solo codici importati (' + totalCodeDocs.toLocaleString('it-IT') + ' art.)</option>' : '')
+                    + codeGroups.map(g => '<option value="' + safeHtml(g.key) + '"' + (selectedCode === g.key ? ' selected' : '') + '>' + safeHtml(g.label) + ' (' + g.docs.length.toLocaleString('it-IT') + ')</option>').join('')
+                    + '</select></div>'
+                );
+            }
+            if (manualGroups.length) {
+                parts.push(
+                    '<div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm">'
+                    + '<label for="imported-manual-filter-select" class="text-xs font-semibold text-slate-700 shrink-0"><i class="fa-solid fa-book-open-reader mr-1.5 text-violet-600"></i>Manuali:</label>'
+                    + '<select id="imported-manual-filter-select" class="flex-1 min-w-0 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-amber-500">'
+                    + '<option value="">Tutti (' + manualGroups.length + ')</option>'
+                    + (codeGroups.length ? '<option value="__ALL_MANUALS__"' + (selectedManual === '__ALL_MANUALS__' ? ' selected' : '') + '>Solo manuali importati (' + totalManualDocs.toLocaleString('it-IT') + ' cap.)</option>' : '')
+                    + manualGroups.map(g => '<option value="' + safeHtml(g.key) + '"' + (selectedManual === g.key ? ' selected' : '') + '>' + safeHtml(g.label) + ' (' + g.docs.length.toLocaleString('it-IT') + ')</option>').join('')
+                    + '</select></div>'
+                );
+            }
+            box.innerHTML = parts.join('');
+            box.querySelector('#imported-code-filter-select')?.addEventListener('change', e => setImportedSourceFilter(e.target.value));
+            box.querySelector('#imported-manual-filter-select')?.addEventListener('change', e => setImportedSourceFilter(e.target.value));
         }
         function renderImportedShortcuts() {
             const quick = document.getElementById('imported-quick-searches');
@@ -4357,6 +4430,8 @@
             if (clonedClearSearch) clonedClearSearch.classList.add('hidden');
             const importedOnly = clone.querySelector('#imported-only-toggle');
             if (importedOnly) { importedOnly.checked = false; importedOnly.removeAttribute('checked'); }
+            const exactPhraseEl = clone.querySelector('#exact-phrase-toggle');
+            if (exactPhraseEl) { exactPhraseEl.checked = false; exactPhraseEl.removeAttribute('checked'); }
             clone.querySelectorAll('.cat-tab').forEach(button => {
                 const selected = button.dataset.cat === 'all';
                 button.classList.toggle('active', selected);
@@ -4393,7 +4468,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.1.7';
+        const APP_VERSION = '1.1.8';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -4860,7 +4935,7 @@
             </button>
             </div>
         </details>
-        <section id="imported-source-filters" class="hidden flex flex-wrap items-center gap-2 mb-5" aria-label="Filtri per codice importato"></section>
+        <section id="imported-source-filters" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5" aria-label="Filtri per codici e manuali importati"></section>
 
         <!-- Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -4873,6 +4948,7 @@
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h3 id="results-heading" class="text-base font-bold text-slate-800">Normative e Articoli Disponibili</h3>
                     <div class="flex items-center gap-2">
+                        <label for="exact-phrase-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600" title="Cerca le parole esatte e consecutive (oppure usa le virgolette)"><input id="exact-phrase-toggle" type="checkbox" onchange="setExactPhraseOnly(this.checked)" class="accent-amber-600">Frase esatta</label>
                         <label for="imported-only-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600"><input id="imported-only-toggle" type="checkbox" onchange="setImportedOnly(this.checked)" class="accent-amber-600">Solo importati</label>
                         <span id="results-count-badge" class="text-xs font-semibold bg-slate-200/80 text-slate-700 px-2.5 py-1 rounded-lg">0 norme</span>
                         <select id="sort-select" onchange="renderResults()" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none">
@@ -5387,7 +5463,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.7</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.8</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

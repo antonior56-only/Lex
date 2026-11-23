@@ -936,9 +936,20 @@
                 if (removeEntirely.has(node.tagName)) { node.remove(); return; }
                 cleanChildren(node);
                 if (!allowed.has(node.tagName)) { node.replaceWith(...node.childNodes); return; }
-                const href = node.tagName === 'A' ? safeExternalUrl(node.getAttribute('href'), '') : '';
+                const epubNavRaw = node.tagName === 'A' ? String(node.getAttribute('data-epub-nav') || '').trim() : '';
+                const epubNav = epubNavRaw && !/^(?:javascript|data|vbscript):/i.test(epubNavRaw) ? epubNavRaw : '';
+                const epubAnchorRaw = String(node.getAttribute('data-epub-anchor') || '').trim();
+                const epubAnchor = /^[a-zA-Z0-9_.:-]{1,120}$/.test(epubAnchorRaw) ? epubAnchorRaw : '';
+                const href = (node.tagName === 'A' && !epubNav) ? safeExternalUrl(node.getAttribute('href'), '') : '';
                 [...node.attributes].forEach(attribute => node.removeAttribute(attribute.name));
-                if (node.tagName === 'A' && href) { node.setAttribute('href', href); node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer'); }
+                if (epubAnchor) node.setAttribute('data-epub-anchor', epubAnchor);
+                if (node.tagName === 'A' && epubNav) {
+                    node.setAttribute('href', '#');
+                    node.setAttribute('data-epub-nav', epubNav);
+                    node.setAttribute('class', 'text-blue-700 hover:text-amber-700 underline underline-offset-2 cursor-pointer');
+                } else if (node.tagName === 'A' && href) {
+                    node.setAttribute('href', href); node.setAttribute('target', '_blank'); node.setAttribute('rel', 'noopener noreferrer');
+                }
             });
             cleanChildren(parsed.body);
             return parsed.body.innerHTML;
@@ -3804,14 +3815,38 @@
                 if (!rawHtml) continue;
                 const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
                 doc.querySelectorAll('script, style, nav, svg, img, picture, figure, audio, video, iframe').forEach(el => el.remove());
+                doc.body?.querySelectorAll('[id], a[name]').forEach(el => {
+                    const anchor = (el.getAttribute('id') || el.getAttribute('name') || '').trim();
+                    if (/^[a-zA-Z0-9_.:-]{1,120}$/.test(anchor)) el.setAttribute('data-epub-anchor', anchor);
+                });
+                doc.body?.querySelectorAll('a[href]').forEach(a => {
+                    const rawHref = (a.getAttribute('href') || '').trim();
+                    if (!rawHref || /^(?:https?:|mailto:|tel:)/i.test(rawHref)) return;
+                    const hashPos = rawHref.indexOf('#');
+                    const filePart = hashPos >= 0 ? rawHref.slice(0, hashPos) : rawHref;
+                    const hashPart = hashPos >= 0 ? rawHref.slice(hashPos + 1) : '';
+                    const targetPath = filePart ? resolveZipRelativePath(fullPath, filePart) : fullPath;
+                    if (targetPath || hashPart) {
+                        a.setAttribute('data-epub-nav', targetPath + (hashPart ? '#' + hashPart : ''));
+                        a.removeAttribute('href');
+                    }
+                });
                 const headingEl = doc.body?.querySelector('h1, h2, h3');
-                const docTitle = (headingEl?.textContent || doc.title || '').replace(/\s+/g, ' ').trim();
+                const rawDocTitle = (doc.title || '').replace(/\s+/g, ' ').trim();
+                const isFilenameTitle = /^(?:part\d+|index_split_\d+|ch(?:ap(?:ter)?)?[_-]?\d+|sec(?:tion)?\d+|calibre.*|unknown|.*\.x?html?)$/i.test(rawDocTitle);
+                let docTitle = (headingEl?.textContent || (!isFilenameTitle ? rawDocTitle : '') || '').replace(/\s+/g, ' ').trim();
+                if (!docTitle && doc.body) {
+                    const firstBlock = [...doc.body.querySelectorAll('h4, h5, p, div, li')]
+                        .map(el => (el.textContent || '').replace(/\s+/g, ' ').trim())
+                        .find(t => t.length >= 3 && t.length <= 110);
+                    if (firstBlock) docTitle = firstBlock;
+                }
                 const cleanHtml = sanitizeImportedHtml(doc.body?.innerHTML || '');
                 const plain = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim();
                 if (plain.length < 40) continue;
                 const chapterTitle = docTitle || `Capitolo ${chapters.length + 1}`;
                 const splitParts = splitLongHtmlChapter(chapterTitle, cleanHtml);
-                splitParts.forEach(part => chapters.push(part));
+                splitParts.forEach(part => chapters.push({ ...part, epubPath: fullPath }));
             }
             if (!chapters.length) throw new Error('Nessun capitolo testuale estratto dall’EPUB.');
             return { title: bookTitle, author: bookAuthor, chapters };
@@ -4023,6 +4058,7 @@
                             tags: [selectedCat, 'manuale', 'epub', 'importato', chosenSource.toLowerCase()],
                             summary: String(ch.plain || ch.title || '').slice(0, 260),
                             fullText: '<h3>' + safeHtml(ch.title || ('Capitolo ' + (idx + 1))) + '</h3>' + ch.html,
+                            epubFile: ch.epubPath || '',
                             externalUrl: ''
                         }));
                         const count = await applyImportedDocs(entries, chosenSource);
@@ -4357,7 +4393,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.1.6';
+        const APP_VERSION = '1.1.7';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -4508,7 +4544,112 @@
                     close();
                 });
             });
+
+        async function navigateEpubInternalLink(targetSpec, linkText = '') {
+            if (!currentAiArticle) return;
+            await ensureImportedDocsLoaded().catch(() => {});
+            const sameManualKey = normalizeCodeName(currentAiArticle.source || currentAiArticle.categoryLabel);
+            const pool = importedDocs.filter(d => normalizeCodeName(d.source || d.categoryLabel) === sameManualKey);
+            if (!pool.length) { showToast('Capitolo non trovato nell’archivio locale.'); return; }
+
+            const spec = String(targetSpec || '').trim();
+            const hashPos = spec.indexOf('#');
+            const targetPath = (hashPos >= 0 ? spec.slice(0, hashPos) : spec).replace(/^\/+/, '').toLowerCase();
+            const targetAnchor = hashPos >= 0 ? spec.slice(hashPos + 1).trim() : '';
+            const targetBase = targetPath.split('/').pop() || '';
+            const targetStem = targetBase.replace(/\.x?html?$/i, '');
+            const normLinkText = normalizeSearchText(linkText).trim();
+
+            const hasAnchorInDoc = (doc, anchor) => {
+                if (!anchor) return false;
+                const escaped = anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                return new RegExp(`data-epub-anchor=["']${escaped}["']`, 'i').test(String(doc.fullText || ''));
+            };
+            const pickBest = candidates => {
+                if (!candidates.length) return null;
+                if (targetAnchor) {
+                    const withAnchor = candidates.find(d => hasAnchorInDoc(d, targetAnchor));
+                    if (withAnchor) return withAnchor;
+                }
+                if (normLinkText.length >= 4) {
+                    const withText = candidates.find(d => normalizeSearchText(d.fullText || '').includes(normLinkText));
+                    if (withText) return withText;
+                }
+                return candidates[0];
+            };
+
+            let targetDoc = null;
+            // 1. Match esatto su epubFile (EPUB importati dalla v1.1.7+)
+            if (targetPath) {
+                targetDoc = pickBest(pool.filter(d => String(d.epubFile || '').toLowerCase() === targetPath));
+            }
+            // 2. Match su basename epubFile (es. part0006.xhtml)
+            if (!targetDoc && targetBase) {
+                targetDoc = pickBest(pool.filter(d => String(d.epubFile || '').toLowerCase().split('/').pop() === targetBase));
+            }
+            // 3. Match su ancora dentro lo stesso capitolo o in qualsiasi capitolo del manuale
+            if (!targetDoc && targetAnchor) {
+                targetDoc = pool.find(d => hasAnchorInDoc(d, targetAnchor)) || null;
+            }
+            // 4. Compatibilità con EPUB già importati in v1.1.6 (es. title === "part0006")
+            if (!targetDoc && targetStem) {
+                targetDoc = pickBest(pool.filter(d => {
+                    const t = String(d.title || '').trim().toLowerCase();
+                    return t === targetStem || t === targetBase || t.startsWith(targetStem + ' ');
+                }));
+            }
+            // 5. Fallback sul testo del link (es. "2.1. La Costituzione")
+            if (!targetDoc && normLinkText.length >= 4) {
+                targetDoc = pool.find(d => d.id !== currentAiArticle.id && normalizeSearchText(d.title || '').includes(normLinkText))
+                    || pool.find(d => d.id !== currentAiArticle.id && normalizeSearchText(d.fullText || '').includes(normLinkText))
+                    || null;
+            }
+
+            if (!targetDoc) {
+                showToast('Capitolo o sezione non trovata in questo manuale.');
+                return;
+            }
+            if (targetDoc.id !== currentAiArticle.id) {
+                await openDetailModal(targetDoc.id);
+            }
+            requestAnimationFrame(() => {
+                const body = document.getElementById('modal-body');
+                if (!body) return;
+                if (targetAnchor) {
+                    const anchorEl = body.querySelector(`[data-epub-anchor="${CSS.escape(targetAnchor)}"]`);
+                    if (anchorEl) { anchorEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+                }
+                if (normLinkText.length >= 4) {
+                    const matchEl = [...body.querySelectorAll('h1, h2, h3, h4, h5, p, li')]
+                        .find(el => normalizeSearchText(el.textContent || '').includes(normLinkText));
+                    if (matchEl) { matchEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
+                }
+                body.scrollTop = 0;
+            });
+        }
+
             document.addEventListener('click', event => {
+                const epubLink = event.target?.closest?.('#modal-body a[data-epub-nav]');
+                if (epubLink) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    navigateEpubInternalLink(epubLink.getAttribute('data-epub-nav'), epubLink.textContent || '');
+                    return;
+                }
+                const modalAnchor = event.target?.closest?.('#modal-body a[href]');
+                if (modalAnchor && isManualDocument(currentAiArticle)) {
+                    const rawHref = modalAnchor.getAttribute('href') || '';
+                    try {
+                        const resolved = new URL(rawHref, window.location.href);
+                        if (resolved.origin === window.location.origin && /\.x?html?$/i.test(resolved.pathname)) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const fileName = resolved.pathname.split('/').pop() || '';
+                            navigateEpubInternalLink(fileName + (resolved.hash || ''), modalAnchor.textContent || '');
+                            return;
+                        }
+                    } catch (_) {}
+                }
                 const refBtn = event.target?.closest?.('[data-legal-ref]');
                 if (!refBtn) return;
                 event.stopPropagation();
@@ -5246,7 +5387,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.6</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.7</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

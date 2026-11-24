@@ -2109,13 +2109,18 @@
             return getReferenceCodeHint([item?.source, item?.categoryLabel, item?.category, ...(item?.tags || [])].join(' '));
         }
         function parseShortActReference(value) {
+            const text = String(value || '');
             // Esclude date complete come 10/08/2024, che altrimenti possono
             // essere lette come atto n. 10/08.
-            const match = String(value || '').match(/(?<![\d/])\b(?:l(?:egge)?\.?\s*)?(\d{1,5})\s*\/\s*(\d{2,4})\b(?!\s*\/)/i);
-            if (!match) return '';
-            let year = match[2];
-            if (year.length === 2) { const shortYear = Number(year); year = String(shortYear < 50 ? 2000 + shortYear : 1900 + shortYear); }
-            return match[1] + '/' + year;
+            const match = text.match(/(?<![\d/])\b(?:l(?:egge)?\.?\s*)?(\d{1,5})\s*\/\s*(\d{2,4})\b(?!\s*\/)/i);
+            if (match) {
+                let year = match[2];
+                if (year.length === 2) { const shortYear = Number(year); year = String(shortYear < 50 ? 2000 + shortYear : 1900 + shortYear); }
+                return match[1] + '/' + year;
+            }
+            const longMatch = text.match(/\b\d{1,2}(?:°|º)?\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})\s*,?\s*n\.?\s*(\d{1,5})\b/i);
+            if (longMatch) return longMatch[2] + '/' + longMatch[1];
+            return '';
         }
         function isSpecificLegalReference(value) {
             const text = String(value || '').trim();
@@ -2195,7 +2200,7 @@
             });
             return [...byCode.values()];
         }
-        function findLocalArticleMatch(reference) {
+        function findLocalArticleMatch(reference, preferredSource = '') {
             const resolved = findLocalArticleMatches(reference);
             const wantedAct = parseShortActReference(reference);
             const codeHint = getReferenceCodeHint(reference);
@@ -2208,18 +2213,25 @@
                 }
                 return importedMatches[importedMatches.length - 1] || resolved[0];
             }
+            if (resolved.length > 1 && preferredSource) {
+                const prefKey = normalizeCodeName(preferredSource);
+                const sameSource = resolved.filter(row => row.kind === 'imported' && normalizeCodeName(row.item.source || row.item.categoryLabel) === prefKey);
+                if (sameSource.length) return sameSource[sameSource.length - 1];
+            }
             return resolved.length === 1 ? resolved[0] : null;
         }
 
         function linkifyLegalReferences(htmlString, options = {}) {
             const artSuffix = '(?:\\s*-\\s*[a-z]+|\\s+(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies))?';
             const artNum = '\\d+' + artSuffix + '(?:\\s*\\.\\s*\\d+)?';
+            const longActDate = '(?:\\d{1,2}(?:°|º)?\\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\\s+\\d{4}\\s*,?\\s*n\\.?\\s*\\d+|\\d+\\/\\d{2,4})';
+            const actExpr = '(?:Legge|L\\.|D\\.?\\s*Lgs\\.?|D\\.?\\s*P\\.?\\s*R\\.?|D\\.?\\s*L\\.?|R\\.?\\s*D\\.?|decreto\\s+legislativo|decreto[\\s-]+legge|decreto\\s+del\\s+presidente\\s+della\\s+repubblica|regio\\s+decreto)\\s*' + longActDate;
             const citationRegex = new RegExp(
                 '\\b((?:(?:Articol[oi]|Artt?\\.?)\\s*' + artNum
                 + '(?:\\s*(?:e|ed|–|-)\\s*' + artNum + ')?'
-                + '(?:,\\s*(?:comma|n\\.|lett\\.)\\s*[a-z0-9]+)*'
-                + '(?:\\s*(?:disp\\.?\\s*att\\.?\\s*(?:c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.)|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.|Cost\\.|Preleggi|codice\\s+di\\s+procedura\\s+(?:civile|penale)|codice\\s+(?:civile|penale)|L\\.\\s*\\d+\\/\\d+|D\\.Lgs\\.\\s*\\d+\\/\\d+|D\\.P\\.R\\.\\s*\\d+\\/\\d+|D\\.L\\.\\s*\\d+\\/\\d+))?)'
-                + '|(?:(?:Legge|L\\.|D\\.Lgs\\.|D\\.P\\.R\\.|D\\.L\\.|R\\.D\\.)\\s*(?:\\d{1,2}\\s+[a-zàèéìòù]+\\s+\\d{4},\\s*n\\.\\s*\\d+|\\d+\\/\\d{2,4})))(?![a-zA-Z0-9_])',
+                + '(?:,?\\s*(?:comma|commi|co\\.|n\\.|lett\\.)\\s*[a-z0-9]+)*'
+                + '(?:\\s*(?:(?:del|della|dello|dell[\'’]|di)\\s+)?(?:disp\\.?\\s*att\\.?\\s*(?:c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.)|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.c\\.|c\\.p\\.|Cost\\.|Preleggi|codice\\s+di\\s+procedura\\s+(?:civile|penale)|codice\\s+(?:civile|penale)|' + actExpr + '))?)'
+                + '|(?:' + actExpr + '))(?![a-zA-Z0-9_])',
                 'gi'
             );
             const parsed = new DOMParser().parseFromString(String(htmlString || ''), 'text/html');
@@ -2257,17 +2269,20 @@
                     const contextStart = Math.max(0, match.index - 32);
                     const nearbyText = source.slice(contextStart, Math.min(source.length, match.index + match[0].length + 32));
                     const inferredCode = inferReferenceCodeFromContext(normalizedCitation, nearbyText, match.index - contextStart, match[0].length);
-                    const hasExplicitAct = /(?:L\.|Legge|D\.Lgs\.|D\.P\.R\.|D\.L\.|R\.D\.|Preleggi|codice\s+)/i.test(normalizedCitation);
+                    const hasExplicitAct = /(?:L\.|Legge|D\.?\s*Lgs\.?|D\.?\s*P\.?\s*R\.?|D\.?\s*L\.?|R\.?\s*D\.?|decreto\s+|regio\s+decreto|Preleggi|codice\s+)/i.test(normalizedCitation);
                     const effectiveCode = inferredCode || (!getReferenceCodeHint(normalizedCitation) && !hasExplicitAct && options.defaultCode ? options.defaultCode : '');
                     const actionableRef = effectiveCode ? `${normalizedCitation} ${effectiveCode}` : normalizedCitation;
+                    const preferredSource = (!effectiveCode && !hasExplicitAct && !getReferenceCodeHint(actionableRef) && options.currentSource) ? options.currentSource : '';
                     const urnUrl = buildNormattivaArticleUrn(actionableRef);
-                    const localMatch = findLocalArticleMatch(actionableRef);
+                    const localMatch = findLocalArticleMatch(actionableRef, preferredSource);
                     let link;
                     if (localMatch) {
                         link = document.createElement('button'); link.type = 'button';
-                        link.title = `Apri ${actionableRef} nell'archivio locale`;
+                        const localSourceLabel = localMatch.item?.source || '';
+                        link.title = localSourceLabel ? `Apri ${actionableRef} in ${localSourceLabel}` : `Apri ${actionableRef} nell'archivio locale`;
                         link.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-amber-100 hover:bg-amber-300 text-amber-950 border border-amber-400 font-sans text-xs font-semibold underline decoration-amber-600 underline-offset-2 transition cursor-pointer';
                         link.setAttribute('data-legal-ref', actionableRef);
+                        if (preferredSource) link.setAttribute('data-legal-source', preferredSource);
                         link.append(document.createTextNode(cleanRef));
                         const icon = document.createElement('i'); icon.className = 'fa-solid fa-book-open text-[9px] text-amber-800'; link.append(icon);
                     } else if (urnUrl) {
@@ -2281,6 +2296,7 @@
                         link.title = `Apri le opzioni di consultazione per ${actionableRef}`;
                         link.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 mx-0.5 rounded-md bg-amber-100 hover:bg-amber-300 text-amber-950 border border-amber-400 font-sans text-xs font-semibold underline decoration-amber-600 underline-offset-2 transition cursor-pointer';
                         link.setAttribute('data-legal-ref', actionableRef);
+                        if (preferredSource) link.setAttribute('data-legal-source', preferredSource);
                         link.append(document.createTextNode(cleanRef));
                         const icon = document.createElement('i'); icon.className = 'fa-solid fa-magnifying-glass text-[9px] text-amber-800'; link.append(icon);
                     }
@@ -2513,12 +2529,12 @@
         }
 
 
-        function openArticleDirectly(ref) {
+        function openArticleDirectly(ref, preferredSource = '') {
             const lower = String(ref || '').trim().toLowerCase();
             if (lower.length < 3) { showToast('Seleziona un riferimento normativo più specifico.'); return; }
 
             // 1. Se l'articolo è nell'archivio locale, aprilo qui prima di proporre le fonti esterne.
-            const localMatch = findLocalArticleMatch(ref);
+            const localMatch = findLocalArticleMatch(ref, preferredSource);
             if (localMatch?.kind === 'imported') { openDetailModal(localMatch.item.id); return; }
             const directKey = localMatch?.kind === 'direct' ? localMatch.key : '';
             if (directKey) {
@@ -2598,16 +2614,37 @@
                 if (guideIdx !== -1) { openGuideModal(guideIdx); return; }
             }
 
-            // 4. Mostra scheda informativa interna con link diretto per qualsiasi riferimento non presente nel testo esteso
+            // 4. Mostra eventuali corrispondenze multiple presenti nell'archivio locale + link esterni
             const safeRef = escapeHtml(ref);
+            const prefSourceKey = preferredSource ? normalizeCodeName(preferredSource) : '';
+            const localOptions = distinctLocalArticleMatches(findLocalArticleMatches(ref)).sort((a, b) => {
+                const aPref = prefSourceKey && a.kind === 'imported' && normalizeCodeName(a.item.source || a.item.categoryLabel) === prefSourceKey ? 1 : 0;
+                const bPref = prefSourceKey && b.kind === 'imported' && normalizeCodeName(b.item.source || b.item.categoryLabel) === prefSourceKey ? 1 : 0;
+                if (aPref !== bPref) return bPref - aPref;
+                return (b.kind === 'imported' ? 1 : 0) - (a.kind === 'imported' ? 1 : 0);
+            });
+            const localOptionsHtml = localOptions.length
+                ? `<div class="mt-3 p-3.5 rounded-xl bg-amber-50 border border-amber-300 font-sans space-y-2">
+                    <p class="text-xs font-bold text-amber-950"><i class="fa-solid fa-book-open mr-1.5 text-amber-600"></i>Trovato in ${localOptions.length} testi del tuo archivio locale — scegli quale aprire:</p>
+                    <div class="flex flex-wrap gap-2">${localOptions.map(m => {
+                        if (m.kind === 'imported') {
+                            const label = `${m.item.article || ref} · ${m.item.source || m.item.categoryLabel || 'Archivio locale'}`;
+                            return `<button type="button" data-open-local-doc="${escapeHtml(m.item.id)}" class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold transition inline-flex items-center gap-1.5"><i class="fa-solid fa-book-open text-[10px]"></i><span>${escapeHtml(shortenLegalLabel(label, 52))}</span></button>`;
+                        }
+                        const label = `${m.key} · ${m.item.source || 'Archivio integrato'}`;
+                        return `<button type="button" data-open-local-key="${escapeHtml(m.key)}" class="px-3 py-1.5 rounded-xl bg-white hover:bg-amber-100 border border-amber-400 text-amber-950 text-xs font-semibold transition inline-flex items-center gap-1.5"><i class="fa-solid fa-book-open text-[10px]"></i><span>${escapeHtml(shortenLegalLabel(label, 52))}</span></button>`;
+                    }).join('')}</div>
+                </div>`
+                : '';
             const normattivaUrl = buildNormattivaArticleUrn(ref) || 'https://www.normattiva.it/ricerca/avanzata';
             const normattivaNeedsCode = isUnqualifiedSingleArticleReference(ref);
             const normattivaActionUrl = normattivaNeedsCode ? '#normattiva-code-options-modal' : normattivaUrl;
-            document.getElementById("modal-badge").textContent = "Riferimento Normativo";
+            document.getElementById("modal-badge").textContent = localOptions.length ? "Scegli il testo in archivio" : "Riferimento Normativo";
             document.getElementById("modal-title").textContent = ref;
             document.getElementById("modal-body").innerHTML = `
                 <p>Hai selezionato il riferimento normativo <strong>${safeRef}</strong>.</p>
-                <p class="mt-2 text-sm text-slate-600">Il testo integrale di questo specifico articolo non è trascritto per intero nel file HTML locale. Puoi consultarlo immediatamente sui portali ufficiali tramite i pulsanti qui sotto:</p>
+                ${localOptionsHtml}
+                <p class="mt-2 text-sm text-slate-600">${localOptions.length ? 'Se invece cercavi questo articolo in un altro codice non ancora importato, puoi consultarlo sui portali ufficiali:' : 'Il testo integrale di questo specifico articolo non è presente nell’archivio locale. Puoi consultarlo immediatamente sui portali ufficiali tramite i pulsanti qui sotto:'}</p>
                 <div class="mt-4 flex flex-wrap gap-2 font-sans">
                     <a href="${getDirectLegalUrl(ref)}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold bg-navy-900 text-white px-4 py-2 rounded-xl inline-flex items-center gap-1.5">
                         <span>${escapeHtml(getBrocardiButtonLabel(ref, getDirectLegalUrl(ref)))}</span>
@@ -2620,6 +2657,8 @@
                 </div>
                 ${buildNormattivaArticleUrn(ref) ? '' : renderNormattivaSearchHint(ref, 'normattiva-code-options-modal')}
             `;
+            document.getElementById('modal-body').querySelectorAll('[data-open-local-doc]').forEach(btn => btn.addEventListener('click', () => openDetailModal(btn.dataset.openLocalDoc)));
+            document.getElementById('modal-body').querySelectorAll('[data-open-local-key]').forEach(btn => btn.addEventListener('click', () => openArticleDirectly(btn.dataset.openLocalKey)));
             document.getElementById('modal-body').querySelector('[data-copy-search]')?.addEventListener('click', () => copyTextFallback(ref));
             document.getElementById("modal-meta").textContent = `Riferimento: ${ref}`;
             document.getElementById("modal-copy-btn").onclick = () => copyTextFallback(ref);
@@ -2802,7 +2841,7 @@
                 ? ''
                 : `<section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(hasDirectNormattiva ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference, resolvedNorm.kind === 'article')}${hasDirectNormattiva ? '' : renderNormattivaSearchHint(articleReference)}</section>`;
             const modalBody = document.getElementById("modal-body");
-            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix })}</div>${citedBySection}${externalCheckSection}<section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle('simple')" title="Spiegazione chiara con esempio pratico e glossario dei termini difficili" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega semplice</button><button onclick="explainCurrentArticle('technical')" title="Analisi tecnico-giuridica: ratio, presupposti, eccezioni, termini e raccordi" class="px-3 py-2 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold"><i class="fa-solid fa-scale-balanced mr-1 text-amber-400"></i>Scheda tecnica</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; richiede fatturazione attiva su Google AI." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
+            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix, currentSource: item.source || '' })}</div>${citedBySection}${externalCheckSection}<section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle('simple')" title="Spiegazione chiara con esempio pratico e glossario dei termini difficili" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega semplice</button><button onclick="explainCurrentArticle('technical')" title="Analisi tecnico-giuridica: ratio, presupposti, eccezioni, termini e raccordi" class="px-3 py-2 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold"><i class="fa-solid fa-scale-balanced mr-1 text-amber-400"></i>Scheda tecnica</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; richiede fatturazione attiva su Google AI." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
             modalBody.querySelector('[data-copy-search]')?.addEventListener('click', () => copyTextFallback(articleReference));
             const citedDetails = modalBody.querySelector('#modal-cited-by');
             if (citedDetails) {
@@ -5205,7 +5244,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.2.0';
+        const APP_VERSION = '1.2.1';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -5467,7 +5506,7 @@
                 const refBtn = event.target?.closest?.('[data-legal-ref]');
                 if (!refBtn) return;
                 event.stopPropagation();
-                openArticleDirectly(refBtn.getAttribute('data-legal-ref'));
+                openArticleDirectly(refBtn.getAttribute('data-legal-ref'), refBtn.getAttribute('data-legal-source') || '');
             });
             document.addEventListener('keydown', event => {
                 const tag = (document.activeElement?.tagName || '').toLowerCase();
@@ -6308,7 +6347,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.2.0</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.2.1</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>

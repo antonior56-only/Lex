@@ -6,21 +6,23 @@
     <title>Lex — Ricerca Normativa di Riferimento</title>
     <!-- PWA Metadata & Manifest -->
     <meta name="theme-color" content="#0f172a">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Lex">
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <!-- CSS statico locale (funziona 100% offline in PWA) -->
+    <!-- CSS statico locale + Icone SVG offline (funziona 100% offline in PWA) -->
     <link rel="stylesheet" href="./styles.css">
-    <!-- Google Fonts: Inter & Lora -->
+    <script>
+        try { if (localStorage.getItem('lex_theme') === 'dark') document.documentElement.classList.add('dark'); } catch (_) {}
+    </script>
+    <!-- Google Fonts: Inter & Lora (opzionale, fallback di sistema offline) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" onload="if(window.pdfjsLib?.GlobalWorkerOptions){window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}"></script>
     <script>
         if (window.pdfjsLib?.GlobalWorkerOptions) {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -257,6 +259,54 @@
         ];
 
         // =========================================================================
+        // 3B. MINI-GLOSSARIO GIURIDICO BASE (100% OFFLINE)
+        // =========================================================================
+        const legalGlossary = [
+            { term: "Abrogazione", def: "Cessazione dell'efficacia di una norma per effetto di una legge successiva o di referendum (art. 15 Preleggi)." },
+            { term: "Addebito (separazione)", def: "Dichiarazione del giudice che la fine della convivenza deriva dalla violazione dei doveri coniugali di uno dei coniugi (art. 151 c.c.)." },
+            { term: "Anatocismo", def: "Produzione di interessi sugli interessi già scaduti e non pagati, vietata salvo limiti di legge (art. 1283 c.c., art. 120 T.U.B.)." },
+            { term: "Annullabilità", def: "Invalidità meno grave della nullità (es. errore, violenza, dolo, incapacità): l'atto produce effetti finché non è annullato entro il termine di prescrizione (di regola 5 anni)." },
+            { term: "Caparra confirmatoria", def: "Somma consegnata alla conclusione del contratto a garanzia dell'adempimento: se chi la dà non adempie, l'altro la trattiene; se non adempie chi l'ha ricevuta, deve restituire il doppio (art. 1385 c.c.)." },
+            { term: "Clausola vessatoria", def: "Clausola che determina un significativo squilibrio a carico del consumatore (nulla ex art. 33 Codice del Consumo) o richiede specifica approvazione scritta (art. 1341 c.c.)." },
+            { term: "Colpa", def: "Mancanza di volontà dell'evento dannoso, che si verifica per negligenza, imprudenza, imperizia o violazione di leggi/regolamenti (art. 43 c.p.)." },
+            { term: "Confisca", def: "Espropriazione a favore dello Stato di beni serviti per commettere un reato o che ne costituiscono il prodotto/profitto (artt. 240, 240-bis c.p.)." },
+            { term: "Contumacia", def: "Mancata costituzione in giudizio di una parte regolarmente citata; non equivale ad ammissione dei fatti." },
+            { term: "Decadenza", def: "Perdita della possibilità di esercitare un diritto per mancato compimento di un atto entro un termine perentorio; a differenza della prescrizione non si interrompe (artt. 2964 ss. c.c.)." },
+            { term: "Delitto / Contravvenzione", def: "Due categorie di reati: i delitti sono puniti con ergastolo, reclusione o multa; le contravvenzioni con arresto o ammenda (art. 39 c.p.)." },
+            { term: "Denuncia", def: "Segnalazione all'autorità giudiziaria o di polizia di un reato procedibile d'ufficio; può essere presentata da chiunque." },
+            { term: "Diffida ad adempiere", def: "Intimazione scritta con cui si assegna alla controparte un termine (di regola almeno 15 giorni) per eseguire la prestazione, avvertendo che in mancanza il contratto sarà risolto (art. 1454 c.c.)." },
+            { term: "Dolo", def: "Nel diritto penale è la volontà cosciente di commettere il reato (art. 43 c.p.); nel diritto civile è anche l'inganno che induce in errore l'altro contraente (art. 1439 c.c.)." },
+            { term: "Esecutività / Titolo esecutivo", def: "Idoneità di un atto (sentenza, decreto ingiuntivo esecutivo, assegno, atto notarile) a consentire l'esecuzione forzata (art. 474 c.p.c.)." },
+            { term: "Fideiussione", def: "Contratto con cui un terzo garantisce personalmente l'adempimento di un'obbligazione altrui con il proprio patrimonio (art. 1936 c.c.)." },
+            { term: "Forza maggiore", def: "Evento straordinario, imprevedibile e inevitabile che rende impossibile la prestazione senza colpa del debitore." },
+            { term: "Giudicato (cosa giudicata)", def: "Definitività di una sentenza non più impugnabile con i mezzi ordinari: l'accertamento fa stato tra le parti (art. 2909 c.c., art. 324 c.p.c.)." },
+            { term: "Giurisprudenza", def: "L'insieme delle decisioni pronunciate dai giudici (in particolare Corte di Cassazione, Consiglio di Stato e Corte Costituzionale) nell'interpretare le leggi." },
+            { term: "Immissioni", def: "Propagazioni di fumo, calore, rumori o scuotimenti dal fondo vicino: sono vietate se superano la normale tollerabilità (art. 844 c.c.)." },
+            { term: "Inadempimento", def: "Mancata o inesatta esecuzione della prestazione dovuta, che obbliga al risarcimento del danno se il debitore non prova l'impossibilità non imputabile (art. 1218 c.c.)." },
+            { term: "Interesse legittimo", def: "Situazione giuridica tutelata nei confronti della Pubblica Amministrazione affinché eserciti il proprio potere in modo legittimo (giurisdizione del TAR)." },
+            { term: "Litispendenza", def: "Proposizione della stessa causa davanti a giudici diversi; il giudice adito successivamente dichiara la litispendenza e cancella la causa (art. 39 c.p.c.)." },
+            { term: "Mediazione civile", def: "Procedura stragiudiziale condotta da un terzo imparziale per trovare un accordo; obbligatoria in alcune materie prima di andare in giudizio (D.Lgs. 28/2010)." },
+            { term: "Messa in mora", def: "Atto scritto con cui il creditore intima al debitore l'adempimento, producendo effetti quali gli interessi moratori e l'interruzione della prescrizione (art. 1219 c.c.)." },
+            { term: "Nullità", def: "Forma più grave di invalidità: l'atto è privo di effetti fin dall'origine, rilevabile d'ufficio dal giudice e imprescrittibile (artt. 1418 ss. c.c.)." },
+            { term: "Onere della prova", def: "Chi vuol far valere un diritto in giudizio deve provare i fatti che ne costituiscono il fondamento; chi eccepisce fatti modificativi o estintivi deve provarli (art. 2697 c.c.)." },
+            { term: "Patteggiamento", def: "Applicazione della pena su richiesta concorde di imputato e pubblico ministero, con riduzione fino a un terzo (art. 444 c.p.p.)." },
+            { term: "Prescrizione", def: "Estinzione di un diritto non esercitato per il tempo stabilito dalla legge (ordinaria 10 anni; illecito civile 5 anni); può essere sospesa o interrotta (artt. 2934 ss. c.c.)." },
+            { term: "Procedibilità d'ufficio", def: "Lo Stato persegue il reato automaticamente appena ne ha notizia, senza necessità di querela della persona offesa." },
+            { term: "Querela", def: "Dichiarazione con cui la persona offesa manifesta la volontà che si proceda penalmente per un reato non perseguibile d'ufficio (di regola entro 3 mesi, art. 124 c.p.)." },
+            { term: "Recesso", def: "Facoltà di sciogliersi unilateralmente da un contratto; nei contratti a distanza del consumatore spetta entro 14 giorni senza penali (art. 52 Cod. Consumo)." },
+            { term: "Recidiva", def: "Aggravante che ricorre quando chi è già stato condannato per un delitto non colposo ne commette un altro (art. 99 c.p.)." },
+            { term: "Rescissione", def: "Rimedio per contratti conclusi in stato di pericolo o di bisogno con grave sproporzione delle prestazioni (artt. 1447 ss. c.c.)." },
+            { term: "Responsabilità extracontrattuale", def: "Obbligo di risarcire il danno ingiusto causato con dolo o colpa fuori da un contratto (art. 2043 c.c., c.d. responsabilità aquiliana)." },
+            { term: "Risoluzione del contratto", def: "Scioglimento del contratto a prestazioni corrispettive per inadempimento, impossibilità sopravvenuta o eccessiva onerosità (artt. 1453 ss. c.c.)." },
+            { term: "Servitù prediale", def: "Peso imposto su un fondo (servente) per l'utilità di un altro fondo (dominante) appartenente a diverso proprietario, es. passaggio (art. 1027 c.c.)." },
+            { term: "Silenzio assenso", def: "Nei procedimenti amministrativi a istanza di parte, l'inerzia della P.A. oltre il termine equivale ad accoglimento della domanda (art. 20 L. 241/1990)." },
+            { term: "Solidarietà (obbligazione)", def: "Quando più debitori sono obbligati per la medesima prestazione, il creditore può chiedere l'intero a uno qualsiasi di essi, salvo regresso tra condebitori (art. 1292 c.c.)." },
+            { term: "Transazione", def: "Contratto con cui le parti, facendosi reciproche concessioni, pongono fine a una lite già iniziata o ne prevengono una futura (art. 1965 c.c.)." },
+            { term: "Usucapione", def: "Modo di acquisto della proprietà tramite possesso continuato, pacifico e pubblico per il tempo previsto dalla legge (di regola 20 anni per gli immobili, art. 1158 c.c.)." },
+            { term: "Vizio occulto", def: "Difetto grave della cosa venduta non facilmente riconoscibile al momento dell'acquisto, che dà diritto a risoluzione o riduzione del prezzo (artt. 1490 ss. c.c.)." }
+        ];
+
+        // =========================================================================
         // 4. STATO APPLICAZIONE E INIZIALIZZAZIONE
         // =========================================================================
         const DB_NAME = "iussearch-pro";
@@ -281,7 +331,9 @@
         let localArticleLookupCache = { docsRef: null, byArticle: new Map() };
         let bookmarks = [];
         let bookmarkNotes = {};
+        let bookmarkFolders = {};
         let bookmarkFilterQuery = '';
+        let bookmarkFolderFilter = '';
         let invertedSearchIndex = null;
         let searchIndexDocsRef = null;
         let allDocumentsCache = { importedRef: null, docs: null };
@@ -289,6 +341,17 @@
         let currentSourceFilter = "";
         let showImportedOnly = false;
         let exactPhraseOnly = false;
+        let excludeAbrogated = false;
+        let constitutionalOnly = false;
+        let titleOnlySearch = false;
+        let modalNavHistory = [];
+        let modalNavCursor = -1;
+        let isModalHistoryNav = false;
+        let modalFindMatches = [];
+        let modalFindCursor = -1;
+        let readingFontScale = (() => {
+            try { const v = parseFloat(localStorage.getItem('lex_reading_scale') || '1'); return (v >= 0.8 && v <= 1.5) ? v : 1; } catch (_) { return 1; }
+        })();
         const SEARCH_STOPWORDS = new Set(['del','dello','della','dei','degli','delle','nel','nello','nella','nei','negli','nelle','sul','sullo','sulla','sui','sugli','sulle','dal','dallo','dalla','dai','dagli','dalle','allo','alla','alle','agli','con','per','tra','fra','che','una','uno','gli','non']);
         function parseSearchQueryMode(query) {
             const raw = String(query || '').trim();
@@ -440,6 +503,10 @@
             bookmarkNotes = (savedNotes && typeof savedNotes === 'object' && !Array.isArray(savedNotes))
                 ? savedNotes
                 : (seed.bookmarkNotes && typeof seed.bookmarkNotes === 'object' ? seed.bookmarkNotes : {});
+            const savedFolders = await readStored('bookmarkFolders').catch(() => null);
+            bookmarkFolders = (savedFolders && typeof savedFolders === 'object' && !Array.isArray(savedFolders))
+                ? savedFolders
+                : (seed.bookmarkFolders && typeof seed.bookmarkFolders === 'object' ? seed.bookmarkFolders : {});
         }
         const storageReady = initializeStorage();
         function getAllDocuments() { if (allDocumentsCache.importedRef !== importedDocs || !allDocumentsCache.docs) { allDocumentsCache = { importedRef: importedDocs, docs: [...importedDocs, ...legalDatabase] }; } return allDocumentsCache.docs; }
@@ -480,7 +547,15 @@
                 const noStoredDocs = docs === null;
                 const seedDocs = Array.isArray(seed.importedDocs) ? seed.importedDocs : [];
                 const seedState = await readStored('standaloneSeedImported').catch(() => null);
-                if (noStoredDocs) docs = oldDocs.length ? oldDocs : [];
+                const legacyMigrated = await readStored('legacyDocsMigrated').catch(() => false);
+                const shouldMigrateLegacy = (noStoredDocs || (Array.isArray(docs) && docs.length === 0 && !legacyMigrated)) && oldDocs.length > 0;
+                if (shouldMigrateLegacy) {
+                    docs = oldDocs;
+                    await writeStored('importedDocs', docs).catch(() => {});
+                    await writeStored('legacyDocsMigrated', true).catch(() => {});
+                } else if (noStoredDocs) {
+                    docs = [];
+                }
                 if (seedDocs.length) {
                     const seedId = getStandaloneSeedId(seed);
                     const marker = seedState && typeof seedState === 'object' ? seedState : null;
@@ -542,7 +617,7 @@
                             .replace(/(^|[^a-z])d\\s*\\.?\\s*p\\s*\\.?\\s*r\\s*\\.?(?=$|[^a-z])/g, '$1 dpr ').replace(/\\bdecreto\\s+del\\s+presidente\\s+della\\s+repubblica\\b/g, 'dpr decreto del presidente della repubblica')
                             .replace(/(^|[^a-z])d\\s*\\.?\\s*l\\s*\\.?(?=$|[^a-z])/g, '$1 decreto legge ')
                             .replace(/(^|[^a-z])(?:l|legge)\\s*\\.?(?=\\s|$)/g, '$1 legge ')
-                            .replace(/(^|[^a-z])art(?:icolo)?\\s*\\.?(?=$|[^a-z])/g, '$1articolo')
+                            .replace(/(^|[^a-z])art(?:icolo)?\\s*\\.?(?=$|[^a-z])/g, '$1 articolo ')
                             .replace(/\\b(\\d+)\\s*-?\\s*(bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies)\\b/g, '$1-$2')
                             .replace(/\\b(\\d+)\\s*\\.\\s*(\\d+)\\b/g, '$1.$2')
                             .replace(/\\s+/g, ' ').trim();
@@ -790,8 +865,16 @@
                 || /not found|not supported|deprecated|unavailable|overloaded|quota|resource_exhausted/.test(msg);
         }
         async function invokeGeminiModel(apiKey, modelId, prompt, options = {}) {
-            const genConfig = { maxOutputTokens: options.maxOutputTokens || 1800 };
+            const maxTokens = options.maxOutputTokens || 1800;
+            const genConfig = { maxOutputTokens: maxTokens };
             if (options.temperature !== null) genConfig.temperature = options.temperature ?? 0.2;
+            if (options.minimalThinking && !options._skipThinkingConfig) {
+                if (/^gemini-(?:[3-9]|\d{2,})(?:[.-]|$)/i.test(modelId)) {
+                    genConfig.thinkingConfig = { thinkingLevel: 'MINIMAL' };
+                } else if (/^gemini-2\.5-/i.test(modelId)) {
+                    genConfig.thinkingConfig = { thinkingBudget: 0 };
+                }
+            }
             const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: genConfig };
             if (options.googleSearch) body.tools = [{ google_search: {} }];
             const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`, {
@@ -804,13 +887,25 @@
                 if (response.status === 400 && /temperature/i.test(msg) && options.temperature !== null) {
                     return invokeGeminiModel(apiKey, modelId, prompt, { ...options, temperature: null });
                 }
+                // Se il modello rifiuta thinkingConfig, riprova una volta senza thinkingConfig.
+                if (response.status === 400 && /thinking/i.test(msg) && genConfig.thinkingConfig && !options._skipThinkingConfig) {
+                    return invokeGeminiModel(apiKey, modelId, prompt, { ...options, _skipThinkingConfig: true });
+                }
                 const err = new Error(msg);
                 err.status = response.status;
                 throw err;
             }
             const candidate = payload.candidates?.[0];
-            const text = (candidate?.content?.parts || []).map(part => part.text || '').join('\n').trim();
+            const text = (candidate?.content?.parts || []).filter(part => !part.thought).map(part => part.text || '').join('\n').trim();
             if (!text) {
+                // Se il budget output è stato assorbito dal thinking, ritenta una volta con un tetto più alto.
+                if (candidate?.finishReason === 'MAX_TOKENS' && !options._retriedMaxTokens) {
+                    return invokeGeminiModel(apiKey, modelId, prompt, {
+                        ...options,
+                        maxOutputTokens: Math.max(maxTokens * 2, 512),
+                        _retriedMaxTokens: true
+                    });
+                }
                 const err = new Error('Gemini non ha restituito una risposta testuale.');
                 err.status = 500;
                 throw err;
@@ -819,7 +914,7 @@
         }
         async function callGemini(prompt, options = {}) {
             const apiKey = await getGeminiKey();
-            if (!apiKey) throw new Error('Configura prima la chiave Gemini dal pulsante AI / API Key.');
+            if (!apiKey) throw new Error('Configura prima la chiave Gemini dal pulsante Manuale e gestione API key.');
             await ensureGeminiModelStateLoaded();
             const tried = new Set();
             let candidates = [...new Set([activeGeminiModel, ...GEMINI_FALLBACK_MODELS, ...cachedGeminiModels].filter(Boolean))];
@@ -938,7 +1033,7 @@
                 .replace(/(^|[^a-z])d\s*\.?\s*p\s*\.?\s*r\s*\.?(?=$|[^a-z])/g, '$1 dpr ').replace(/\bdecreto\s+del\s+presidente\s+della\s+repubblica\b/g, 'dpr decreto del presidente della repubblica')
                 .replace(/(^|[^a-z])d\s*\.?\s*l\s*\.?(?=$|[^a-z])/g, '$1 decreto legge ')
                 .replace(/(^|[^a-z])(?:l|legge)\s*\.?(?=\s|$)/g, '$1 legge ')
-                .replace(/(^|[^a-z])art(?:icolo)?\s*\.?(?=$|[^a-z])/g, '$1articolo')
+                .replace(/(^|[^a-z])art(?:icolo)?\s*\.?(?=$|[^a-z])/g, '$1 articolo ')
                 .replace(/\b(\d+)\s*-?\s*(bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies)\b/g, '$1-$2')
                 .replace(/\b(\d+)\s*\.\s*(\d+)\b/g, '$1.$2')
                 .replace(/\s+/g, ' ').trim();
@@ -1027,31 +1122,236 @@
                 next: pos < ordered.length - 1 ? ordered[pos + 1] : null
             };
         }
+        function pushModalHistory(entry) {
+            if (isModalHistoryNav || !entry) return;
+            const current = modalNavHistory[modalNavCursor];
+            if (current && current.type === entry.type && current.key === entry.key) {
+                updateModalHistoryUI();
+                return;
+            }
+            modalNavHistory = modalNavHistory.slice(0, modalNavCursor + 1);
+            modalNavHistory.push(entry);
+            if (modalNavHistory.length > 30) modalNavHistory.shift();
+            modalNavCursor = modalNavHistory.length - 1;
+            updateModalHistoryUI();
+        }
+        function updateModalHistoryUI() {
+            const backBtn = document.getElementById('modal-history-back-btn');
+            const fwdBtn = document.getElementById('modal-history-fwd-btn');
+            const nav = document.getElementById('modal-article-nav');
+            if (!backBtn || !fwdBtn) return;
+            const canBack = modalNavCursor > 0;
+            const canFwd = modalNavCursor >= 0 && modalNavCursor < modalNavHistory.length - 1;
+            backBtn.classList.toggle('hidden', !canBack && !canFwd);
+            fwdBtn.classList.toggle('hidden', !canBack && !canFwd);
+            backBtn.disabled = !canBack;
+            backBtn.classList.toggle('opacity-50', !canBack);
+            backBtn.title = canBack ? ('Torna a: ' + (modalNavHistory[modalNavCursor - 1]?.label || 'precedente') + ' (Alt+Backspace)') : 'Nessuna pagina precedente';
+            fwdBtn.disabled = !canFwd;
+            fwdBtn.classList.toggle('opacity-50', !canFwd);
+            fwdBtn.title = canFwd ? ('Avanti: ' + (modalNavHistory[modalNavCursor + 1]?.label || 'successiva')) : 'Nessuna pagina successiva';
+            if (nav && (canBack || canFwd)) nav.classList.remove('hidden');
+        }
+        async function navigateModalHistory(delta) {
+            const nextIdx = modalNavCursor + delta;
+            if (nextIdx < 0 || nextIdx >= modalNavHistory.length) return;
+            modalNavCursor = nextIdx;
+            const entry = modalNavHistory[nextIdx];
+            isModalHistoryNav = true;
+            try {
+                if (entry.type === 'doc') await openDetailModal(entry.key);
+                else if (entry.type === 'guide') await openGuideModal(entry.key);
+                else if (entry.type === 'ref') openArticleDirectly(entry.key);
+            } finally {
+                isModalHistoryNav = false;
+                updateModalHistoryUI();
+            }
+        }
+        function applyReadingFontSize() {
+            const body = document.getElementById('modal-body');
+            if (body) body.style.setProperty('--lex-reading-scale', String(readingFontScale));
+            const label = document.getElementById('modal-font-scale-label');
+            if (label) label.textContent = Math.round(readingFontScale * 100) + '%';
+        }
+        function adjustReadingFontSize(step) {
+            readingFontScale = Math.round(Math.min(1.5, Math.max(0.8, readingFontScale + step * 0.1)) * 10) / 10;
+            try { localStorage.setItem('lex_reading_scale', String(readingFontScale)); } catch (_) {}
+            applyReadingFontSize();
+        }
+        function updateThemeToggleUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const btn = document.getElementById('theme-toggle-btn');
+            if (!btn) return;
+            btn.setAttribute('aria-pressed', String(isDark));
+            btn.title = isDark ? 'Passa a tema chiaro' : 'Passa a tema scuro';
+            btn.innerHTML = isDark ? '<i class="fa-solid fa-sun text-amber-400"></i>' : '<i class="fa-solid fa-moon text-slate-200"></i>';
+        }
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('lex_theme', isDark ? 'dark' : 'light'); } catch (_) {}
+            updateThemeToggleUI();
+        }
+        function clearModalFindHighlights(root) {
+            if (!root) return;
+            root.querySelectorAll('mark[data-modal-find]').forEach(mark => {
+                const parent = mark.parentNode;
+                if (!parent) return;
+                parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+                parent.normalize();
+            });
+            modalFindMatches = [];
+            modalFindCursor = -1;
+        }
+        function runModalFind(queryStr, autoScroll = true) {
+            const body = document.getElementById('modal-body');
+            const articleRoot = body?.firstElementChild;
+            const countEl = document.getElementById('modal-find-count');
+            clearModalFindHighlights(articleRoot);
+            const raw = String(queryStr || '').trim();
+            if (!articleRoot || raw.length < 2) {
+                if (countEl) countEl.textContent = '';
+                return;
+            }
+            const { clean } = parseSearchQueryMode(raw);
+            const terms = [...new Set(String(clean || raw).split(/\s+/).map(t => t.trim()).filter(t => t.length >= 2 && !SEARCH_STOPWORDS.has(t.toLowerCase())))];
+            const needles = terms.length ? terms : [clean || raw];
+            const escapedPattern = needles.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).sort((a, b) => b.length - a.length).join('|');
+            if (!escapedPattern) return;
+            const re = new RegExp(escapedPattern, 'gi');
+            const walker = document.createTreeWalker(articleRoot, NodeFilter.SHOW_TEXT, {
+                acceptNode(node) {
+                    if (!node.nodeValue?.trim()) return NodeFilter.FILTER_REJECT;
+                    if (node.parentElement?.closest('script, style, mark[data-modal-find]')) return NodeFilter.FILTER_REJECT;
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            });
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            nodes.forEach(textNode => {
+                const text = textNode.nodeValue;
+                const matches = [...text.matchAll(re)];
+                if (!matches.length) return;
+                const frag = document.createDocumentFragment();
+                let cursor = 0;
+                matches.forEach(m => {
+                    if (m.index > cursor) frag.append(document.createTextNode(text.slice(cursor, m.index)));
+                    const mark = document.createElement('mark');
+                    mark.setAttribute('data-modal-find', '1');
+                    mark.className = 'highlight-term';
+                    mark.textContent = m[0];
+                    frag.append(mark);
+                    modalFindMatches.push(mark);
+                    cursor = m.index + m[0].length;
+                });
+                if (cursor < text.length) frag.append(document.createTextNode(text.slice(cursor)));
+                textNode.replaceWith(frag);
+            });
+            if (modalFindMatches.length) {
+                modalFindCursor = 0;
+                if (countEl) countEl.textContent = `1/${modalFindMatches.length}`;
+                modalFindMatches[0].classList.add('highlight-term-active');
+                if (autoScroll) modalFindMatches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                if (countEl) countEl.textContent = '0';
+            }
+        }
+        function stepModalFind(delta) {
+            if (!modalFindMatches.length) return;
+            modalFindMatches[modalFindCursor]?.classList.remove('highlight-term-active');
+            modalFindCursor = (modalFindCursor + delta + modalFindMatches.length) % modalFindMatches.length;
+            const active = modalFindMatches[modalFindCursor];
+            active.classList.add('highlight-term-active');
+            active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const countEl = document.getElementById('modal-find-count');
+            if (countEl) countEl.textContent = `${modalFindCursor + 1}/${modalFindMatches.length}`;
+        }
+        function findLocalCrossReferences(item) {
+            if (!item || isManualDocument(item)) return [];
+            const artId = normalizeArticleIdentifier(item.article);
+            if (!artId) return [];
+            const codeHint = getDocumentCodeHint(item);
+            const escapedId = artId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/([a-z]+)$/i, '[-\\s]?$1');
+            const artPattern = new RegExp(`\\b(?:art(?:icol[oi]|t)?\\.?\\s*)${escapedId}(?![\\d.-])`, 'i');
+            const sameSourceKey = normalizeCodeName(item.source || item.categoryLabel);
+            const matches = [];
+            for (const doc of getAllDocuments()) {
+                if (doc.id === item.id) continue;
+                const docText = String(doc.fullText || '').replace(/<[^>]+>/g, ' ');
+                if (!artPattern.test(docText)) continue;
+                const docSourceKey = normalizeCodeName(doc.source || doc.categoryLabel);
+                const docCodeHint = getDocumentCodeHint(doc);
+                const sameCode = (sameSourceKey && docSourceKey === sameSourceKey) || (codeHint && docCodeHint === codeHint);
+                const mentionsCode = !codeHint || sameCode || (codeHint === 'cc' && /\bc\.?\s*c\.?\b|codice\s+civile/i.test(docText))
+                    || (codeHint === 'cp' && /\bc\.?\s*p\.?\b|codice\s+penale/i.test(docText))
+                    || (codeHint === 'cpc' && /\bc\.?\s*p\.?\s*c\.?\b|procedura\s+civile/i.test(docText))
+                    || (codeHint === 'cpp' && /\bc\.?\s*p\.?\s*p\.?\b|procedura\s+penale/i.test(docText))
+                    || (codeHint === 'cost' && /\bcost\.?\b|costituzione/i.test(docText));
+                if (!mentionsCode) continue;
+                matches.push({ doc, sameCode });
+                if (matches.length >= 40) break;
+            }
+            return matches.sort((a, b) => Number(b.sameCode) - Number(a.sameCode)).map(r => r.doc);
+        }
+        function printSheetHtml(title, meta, itemsHtml) {
+            const sheet = document.getElementById('print-dossier-sheet');
+            if (!sheet) { window.print(); return; }
+            sheet.innerHTML = `<h1>${escapeHtml(title)}</h1><p class="print-meta">${escapeHtml(meta)}</p>${itemsHtml}`;
+            window.print();
+        }
+        function printCurrentModalArticle() {
+            const title = document.getElementById('modal-title')?.textContent || 'Norma';
+            const badge = document.getElementById('modal-badge')?.textContent || '';
+            const meta = document.getElementById('modal-meta')?.textContent || '';
+            const articleEl = document.getElementById('modal-body')?.firstElementChild;
+            const bodyHtml = articleEl ? sanitizeImportedHtml(articleEl.innerHTML) : '';
+            const note = currentAiArticle && bookmarkNotes[currentAiArticle.id] ? bookmarkNotes[currentAiArticle.id] : '';
+            const folder = currentAiArticle && bookmarkFolders[currentAiArticle.id] ? bookmarkFolders[currentAiArticle.id] : '';
+            const today = new Date().toLocaleDateString('it-IT');
+            const itemHtml = `<article class="print-item"><h2>${escapeHtml(title)}</h2><p class="print-source">${escapeHtml([badge, meta, folder ? 'Fascicolo: ' + folder : ''].filter(Boolean).join(' · '))}</p><div>${bodyHtml}</div>${note ? `<div class="print-note"><strong>Nota personale:</strong>\n${escapeHtml(note)}</div>` : ''}</article>`;
+            printSheetHtml(title, `Lex — Stampa estratto · ${today}`, itemHtml);
+        }
         function updateModalArticleNavigation(item) {
             const nav = document.getElementById('modal-article-nav');
             const prevBtn = document.getElementById('modal-prev-article-btn');
             const nextBtn = document.getElementById('modal-next-article-btn');
             if (!nav || !prevBtn || !nextBtn) return;
-            if (!item) { nav.classList.add('hidden'); return; }
-            const { prev, next } = getAdjacentArticleIds(item);
-            if (!prev && !next) { nav.classList.add('hidden'); return; }
+            const { prev, next } = item ? getAdjacentArticleIds(item) : { prev: null, next: null };
+            const hasHistory = modalNavCursor > 0 || (modalNavCursor >= 0 && modalNavCursor < modalNavHistory.length - 1);
+            if (!prev && !next && !hasHistory) { nav.classList.add('hidden'); updateModalHistoryUI(); return; }
             nav.classList.remove('hidden');
+            prevBtn.classList.toggle('hidden', !prev && !next);
+            nextBtn.classList.toggle('hidden', !prev && !next);
             prevBtn.disabled = !prev;
             prevBtn.classList.toggle('opacity-50', !prev);
             const isManualNav = isManualDocument(item);
             prevBtn.innerHTML = prev
-                ? '<i class="fa-solid fa-arrow-left mr-1"></i>' + escapeHtml(shortenLegalLabel(prev.article, 24))
+                ? '<i class="fa-solid fa-arrow-left mr-1"></i>' + escapeHtml(shortenLegalLabel(prev.article, 22))
                 : '<i class="fa-solid fa-arrow-left mr-1"></i>' + (isManualNav ? 'Cap. precedente' : 'Art. precedente');
             prevBtn.onclick = prev ? () => openDetailModal(prev.id) : null;
             nextBtn.disabled = !next;
             nextBtn.classList.toggle('opacity-50', !next);
             nextBtn.innerHTML = next
-                ? escapeHtml(shortenLegalLabel(next.article, 24)) + '<i class="fa-solid fa-arrow-right ml-1"></i>'
+                ? escapeHtml(shortenLegalLabel(next.article, 22)) + '<i class="fa-solid fa-arrow-right ml-1"></i>'
                 : (isManualNav ? 'Cap. successivo' : 'Art. successivo') + '<i class="fa-solid fa-arrow-right ml-1"></i>';
             nextBtn.onclick = next ? () => openDetailModal(next.id) : null;
+            updateModalHistoryUI();
         }
         async function saveBookmarkNotes() {
             return writeStored('bookmarkNotes', bookmarkNotes).catch(() => showToast('Salvataggio note non riuscito.'));
+        }
+        async function saveBookmarkFolders() {
+            return writeStored('bookmarkFolders', bookmarkFolders).catch(() => showToast('Salvataggio fascicoli non riuscito.'));
+        }
+        async function updateBookmarkMeta(docId, folderText, noteText) {
+            const cleanFolder = String(folderText || '').trim();
+            const cleanNote = String(noteText || '').trim();
+            if (cleanFolder) bookmarkFolders[docId] = cleanFolder;
+            else delete bookmarkFolders[docId];
+            if (cleanNote) bookmarkNotes[docId] = cleanNote;
+            else delete bookmarkNotes[docId];
+            await Promise.all([saveBookmarkFolders(), saveBookmarkNotes()]);
+            updateBookmarkUI();
+            showToast(cleanFolder || cleanNote ? 'Fascicolo e nota salvati.' : 'Fascicolo e nota rimossi.');
         }
         async function updateBookmarkNote(docId, noteText) {
             const cleaned = String(noteText || '').trim();
@@ -1064,8 +1364,12 @@
         function saveBookmarks() { return writeStored('bookmarks', bookmarks).catch(() => showToast('Salvataggio dei segnalibri non riuscito.')); }
 
         document.addEventListener("DOMContentLoaded", async () => {
-            await storageReady;
+            updateThemeToggleUI();
+            applyReadingFontSize();
             renderAbbreviations(abbreviations);
+            renderGlossary(legalGlossary);
+            renderHomeArchiveStatus();
+            await storageReady;
             updateNotebookCountUI();
             updateBookmarkUI();
             renderResults();
@@ -1082,7 +1386,16 @@
                 // non avvia un filtro completo per ogni carattere.
                 searchDebounceTimer = setTimeout(() => requestAnimationFrame(renderResults), 320);
             });
-            searchInput.addEventListener("keydown", (e) => {
+            searchInput.addEventListener("keydown", async (e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    executeSearchNow();
+                    await ensureImportedDocsLoaded().catch(() => {});
+                    const match = findLocalArticleMatch(searchInput.value.trim());
+                    if (match?.kind === 'imported') openDetailModal(match.item.id);
+                    else if (match?.kind === 'direct') openArticleDirectly(match.key);
+                    return;
+                }
                 if (e.key === "Enter") executeSearchNow();
             });
 
@@ -1097,10 +1410,10 @@
                 btn.addEventListener("click", () => {
                     document.querySelectorAll(".cat-tab").forEach(b => {
                         b.classList.remove("active", "bg-navy-900", "text-white", "font-semibold");
-                        b.classList.add("bg-white", "text-slate-600", "font-medium");
+                        b.classList.add("bg-white", "text-slate-600", "font-medium", "hover:bg-slate-100", "border", "border-slate-200");
                     });
                     btn.classList.add("active", "bg-navy-900", "text-white", "font-semibold");
-                    btn.classList.remove("bg-white", "text-slate-600", "font-medium");
+                    btn.classList.remove("bg-white", "text-slate-600", "font-medium", "hover:bg-slate-100", "border", "border-slate-200");
                     const categoryLabel = document.getElementById('category-current-label');
                     if (categoryLabel) categoryLabel.textContent = btn.textContent.replace(/\s+/g, ' ').trim();
                     document.getElementById('category-tabs')?.removeAttribute('open');
@@ -1202,9 +1515,10 @@
                 [/(^|[^a-z])d\s*\.?\s*p\s*\.?\s*r\s*\.?(?=$|[^a-z])/g, m => m[1] + ' dpr '],
                 [/(^|[^a-z])d\s*\.?\s*l\s*\.?(?=$|[^a-z])/g, m => m[1] + ' decreto legge '],
                 [/(^|[^a-z])(?:l|legge)\s*\.?(?=\s|$)/g, m => m[1] + ' legge '],
-                [/(^|[^a-z])art(?:icolo)?\s*\.?(?=$|[^a-z])/g, m => m[1] + 'articolo'],
+                [/(^|[^a-z])art(?:icolo)?\s*\.?(?=$|[^a-z])/g, m => m[1] + ' articolo '],
                 [/\b(\d+)\s*-?\s*(bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quindecies|sexdecies|septiesdecies|duodevicies|undevicies|vicies)\b/g, m => m[1] + '-' + m[2]],
-                [/\b(\d+)\s*\.\s*(\d+)\b/g, m => m[1] + '.' + m[2]]
+                [/\b(\d+)\s*\.\s*(\d+)\b/g, m => m[1] + '.' + m[2]],
+                [/\s+/g, () => ' ']
             ].forEach(([pattern, replacement]) => replaceMapped(pattern, replacement));
             const ranges = [];
             terms.forEach(term => {
@@ -1352,8 +1666,8 @@
                 ? `Apri ${shortenLegalLabel(reference, 32)} vigente su Normattiva`
                 : 'Apri atto vigente su Normattiva';
         }
-        function renderNormattivaArticleHint(reference) {
-            if (!buildNormattivaArticleUrn(reference)) return '';
+        function renderNormattivaArticleHint(reference, hasDirectUrn = false) {
+            if (!hasDirectUrn && !buildNormattivaArticleUrn(reference)) return '';
             const articleLabel = extractArticleHeading(reference);
             if (!articleLabel) return '';
             return `<p class="mt-2 text-xs leading-relaxed text-blue-800">Se Normattiva apre il codice completo: cerca <strong>${escapeHtml(articleLabel)}</strong> nella pagina.</p>`;
@@ -1422,8 +1736,10 @@
         }
 
         function buildDynamicReferenceCard(query) {
-            const qLower = String(query || '').trim().toLowerCase();
+            const cleanQuery = parseSearchQueryMode(query).clean;
+            const qLower = cleanQuery.toLowerCase();
             if (qLower.length < 3) return '';
+            query = cleanQuery;
             // Cerca nel prontuario rapido se esiste una corrispondenza specifica
             const matchedGuide = normativeQuickIndex.map(item => {
                 const score = scoreGuideMatch(item, qLower);
@@ -1547,7 +1863,7 @@
 
             // All'apertura mostra solo il campo di ricerca: evita di filtrare e
             // costruire centinaia di schede prima che l'utente abbia cercato.
-            if (q.length < 2 && !aiSearchTerms.length && currentCategory === "all" && !currentSourceFilter && !showImportedOnly) {
+            if (q.length < 2 && !aiSearchTerms.length && currentCategory === "all" && !currentSourceFilter && !showImportedOnly && !excludeAbrogated && !constitutionalOnly) {
                 dynamicBox.innerHTML = "";
                 dynamicBox.classList.add("hidden");
                 container.innerHTML = '<div class="rounded-2xl border border-dashed border-slate-300 bg-white/80 p-6 text-center text-sm text-slate-600">Scrivi almeno <strong>2 caratteri</strong> per cercare nell’archivio. Le schede verranno caricate solo dopo la ricerca.</div>';
@@ -1592,6 +1908,11 @@
             const candidatePool = q.trim().length >= 2 ? getCandidateDocumentsForQuery(allDocs, q, aiSearchTerms) : allDocs;
             let filtered = candidatePool.filter(item => {
                 if (showImportedOnly && importedIds && !importedIds.has(item.id)) return false;
+                if (excludeAbrogated || constitutionalOnly) {
+                    const st = detectArticleStatus(item);
+                    if (excludeAbrogated && st.abrogated) return false;
+                    if (constitutionalOnly && !st.constitutional) return false;
+                }
                 const matchesCategory = currentCategory === "all" || item.category === currentCategory;
                 const matchesSource = !currentSourceFilter
                     || (currentSourceFilter === '__ALL_CODES__' ? (importedIds.has(item.id) && !isManualDocument(item))
@@ -1600,7 +1921,8 @@
                 if (!matchesCategory || !matchesSource) return false;
                 if (!q) return true;
 
-                const searchable = plainDocumentText(item);
+                const idxObj = getDocumentSearchIndex(item);
+                const searchable = titleOnlySearch ? (idxObj.article + ' ' + idxObj.title) : idxObj.text;
                 const matchesQuery = q.trim().length < 2 ? false : matchesNormalizedSearchQuery(searchable, q);
                 return matchesQuery || aiSearchTerms.some(term => matchesNormalizedSearchQuery(searchable, term));
             });
@@ -2059,7 +2381,7 @@
 
         function buildNormattivaActUrl(reference) {
             const clauses = String(reference || '').split(';').map(part => part.trim()).filter(Boolean);
-            const prefixPattern = /(?:^|\b)(decreto\s+legislativo|decreto\s+legge|decreto\s+del\s+presidente\s+della\s+repubblica|d\s*\.?\s*lgs\.?|d\s*\.?\s*l\.?|d\s*\.?\s*p\s*\.?\s*r\.?|legge|l\.?)(?=\s)/i;
+            const prefixPattern = /(?:^|\b)(decreto\s+legislativo|decreto[\s-]+legge|decreto\s+del\s+presidente\s+della\s+repubblica|regio\s+decreto|d\s*\.?\s*lgs\.?|d\s*\.?\s*l\.?|d\s*\.?\s*p\s*\.?\s*r\.?|r\s*\.?\s*d\.?|legge|l\.?)(?=\s)/i;
             const datePattern = /\b(\d{1,2})(?:°|º)?\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+(\d{4})\s*,?\s*n\.?\s*(\d+)\b/i;
             const months = { gennaio:'01', febbraio:'02', marzo:'03', aprile:'04', maggio:'05', giugno:'06', luglio:'07', agosto:'08', settembre:'09', ottobre:'10', novembre:'11', dicembre:'12' };
             const articlePattern = new RegExp('\\bArt(?:icolo)?\\.?\\s*(\\d+)(?:\\s*-?\\s*(' + normattivaArticleSuffixes.join('|') + '))?(?:\\s*\\.\\s*(\\d+))?(?!\\s*(?:c\\.c\\.|c\\.p\\.c\\.|c\\.p\\.p\\.|c\\.p\\.|Cost\\.))', 'i');
@@ -2071,12 +2393,13 @@
                 const month = months[dateAndNumber[2].toLowerCase()];
                 const year = dateAndNumber[3];
                 const number = dateAndNumber[4];
-                const typeToken = prefix[1].toLowerCase().replace(/[.\s]/g, '');
+                const typeToken = prefix[1].toLowerCase().replace(/[-.\s]/g, '');
                 let type = '';
                 if (typeToken === 'l' || typeToken === 'legge') type = 'legge';
                 else if (typeToken === 'dlgs' || typeToken === 'decretolegislativo') type = 'decreto.legislativo';
                 else if (typeToken === 'dl' || typeToken === 'decretolegge') type = 'decreto.legge';
                 else if (typeToken === 'dpr' || typeToken === 'decretodelpresidentedellarepubblica') type = 'decreto.del.presidente.della.repubblica';
+                else if (typeToken === 'rd' || typeToken === 'regiodecreto') type = 'regio.decreto';
                 if (!type) continue;
                 const articleMatch = clause.match(articlePattern);
                 const suffix = (articleMatch?.[2] || '').toLowerCase().replace(/^tris$/, 'ter').replace(/^quinques$/, 'quinquies');
@@ -2240,7 +2563,12 @@
                 if (bc) { bc.textContent = ''; bc.classList.add('hidden'); }
                 const sb = document.getElementById('modal-status-badges');
                 if (sb) { sb.innerHTML = '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">Estratto locale</span>'; }
+                currentAiArticle = null;
+                pushModalHistory({ type: 'ref', key: ref, label: shortenLegalLabel(art.title || ref, 26) });
                 updateModalArticleNavigation(null);
+                applyReadingFontSize();
+                const findInput = document.getElementById('modal-find-input');
+                if (findInput) { findInput.value = ''; runModalFind('', false); }
                 showLayer('detail-modal');
                 return;
             }
@@ -2315,7 +2643,12 @@
             if (bc) { bc.textContent = ''; bc.classList.add('hidden'); }
             const sb = document.getElementById('modal-status-badges');
             if (sb) { sb.innerHTML = ''; }
+            currentAiArticle = null;
+            pushModalHistory({ type: 'ref', key: ref, label: shortenLegalLabel(ref, 26) });
             updateModalArticleNavigation(null);
+            applyReadingFontSize();
+            const findInput2 = document.getElementById('modal-find-input');
+            if (findInput2) { findInput2.value = ''; runModalFind('', false); }
             showLayer('detail-modal');
         }
 
@@ -2413,7 +2746,12 @@
             if (bc) { bc.textContent = ''; bc.classList.add('hidden'); }
             const sb = document.getElementById('modal-status-badges');
             if (sb) { sb.innerHTML = '<span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">Prontuario rapido</span>'; }
+            currentAiArticle = null;
+            pushModalHistory({ type: 'guide', key: index, label: shortenLegalLabel(guide.title, 26) });
             updateModalArticleNavigation(null);
+            applyReadingFontSize();
+            const findInputG = document.getElementById('modal-find-input');
+            if (findInputG) { findInputG.value = ''; runModalFind('', false); }
             showLayer('detail-modal');
         }
 
@@ -2431,14 +2769,18 @@
             if (bcEl) {
                 if (item.sectionPath) {
                     bcEl.textContent = item.sectionPath;
+                    bcEl.title = 'Clicca per aprire l’indice gerarchico di questo codice';
+                    bcEl.onclick = () => openTocModal(normalizeCodeName(item.source || item.categoryLabel));
                     bcEl.classList.remove('hidden');
                 } else {
                     bcEl.textContent = '';
+                    bcEl.onclick = null;
                     bcEl.classList.add('hidden');
                 }
             }
             const statusBadgesEl = document.getElementById('modal-status-badges');
             if (statusBadgesEl) statusBadgesEl.innerHTML = renderStatusBadgesHtml(item);
+            pushModalHistory({ type: 'doc', key: item.id, label: shortenLegalLabel(item.article || item.title, 26) });
             updateModalArticleNavigation(item);
             currentAiArticle = item;
             const parsedBody = new DOMParser().parseFromString(sanitizeImportedHtml(item.fullText || ''), 'text/html');
@@ -2447,21 +2789,44 @@
             while (expectedTitle && parsedBody.body.firstElementChild && ['H1', 'H2', 'H3', 'P'].includes(parsedBody.body.firstElementChild.tagName) && normalizeTitle(parsedBody.body.firstElementChild.textContent) === expectedTitle) parsedBody.body.firstElementChild.remove();
             const isManual = isManualDocument(item);
             const codeSuffix = isManual ? '' : ({ cc: 'c.c.', cp: 'c.p.', cpc: 'c.p.c.', cpp: 'c.p.p.', cost: 'Cost.', disp_att_cc: 'disp. att. c.c.', disp_att_cpc: 'disp. att. c.p.c.', disp_att_cpp: 'disp. att. c.p.p.', disp_att_cp: 'disp. att. c.p.' }[getDocumentCodeHint(item)] || '');
-            const resolvedNorm = isManual ? { reference: item.article || item.title, articleUrl: '' } : resolveDocumentNormattivaUrls(item);
+            const resolvedNorm = isManual ? { reference: item.article || item.title, articleUrl: '', kind: '' } : resolveDocumentNormattivaUrls(item);
+            const hasDirectNormattiva = resolvedNorm.kind === 'article' || resolvedNorm.kind === 'act';
             const articleReference = resolvedNorm.reference;
             const articleNormattivaUrl = resolvedNorm.articleUrl || 'https://www.normattiva.it/ricerca/avanzata';
             const articleBrocardiUrl = isManual ? '' : (codeSuffix ? getDirectLegalUrl(articleReference || item.article, item.title) : buildBrocardiFallbackSearchUrl(articleReference || item.article, item.title, item.source));
             const articleNormattivaLabel = isManual ? '' : getNormattivaButtonLabel(articleReference, articleNormattivaUrl);
+            const citedBySection = isManual || !normalizeArticleIdentifier(item.article)
+                ? ''
+                : `<details id="modal-cited-by" class="mt-4 rounded-xl border border-slate-200 bg-slate-50 font-sans"><summary class="list-none cursor-pointer px-3 py-2.5 text-xs font-semibold text-slate-700 flex items-center justify-between gap-2"><span><i class="fa-solid fa-link mr-1.5 text-amber-600"></i>Citato da altri articoli nell’archivio locale</span><i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i></summary><div id="modal-cited-by-list" class="px-3 pb-3 pt-1 text-xs text-slate-600">Clicca per cercare i rinvii locali…</div></details>`;
             const externalCheckSection = isManual
                 ? ''
-                : `<section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(buildNormattivaArticleUrn(articleReference) ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference)}${buildNormattivaArticleUrn(articleReference) ? '' : renderNormattivaSearchHint(articleReference)}</section>`;
+                : `<section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 font-sans"><p class="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">Verifica esterna (facoltativa)</p><p class="mb-3 text-xs leading-relaxed text-slate-600">Il testo sopra è quello dell’archivio: <strong>${escapeHtml(item.source || item.categoryLabel)}</strong>. Usa questi collegamenti solo per controllare eventuali variazioni; Normattiva mostra il testo vigente, Brocardi offre un confronto aggiuntivo.</p><div class="flex flex-wrap gap-2"><a href="${articleNormattivaUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-800 text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>${escapeHtml(hasDirectNormattiva ? 'Verifica la versione vigente su Normattiva' : articleNormattivaLabel)}</a><a href="${articleBrocardiUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-lg bg-navy-900 text-white text-xs font-semibold"><i class="fa-solid fa-arrow-up-right-from-square mr-1"></i>Confronta su Brocardi</a></div>${renderNormattivaArticleHint(articleReference, resolvedNorm.kind === 'article')}${hasDirectNormattiva ? '' : renderNormattivaSearchHint(articleReference)}</section>`;
             const modalBody = document.getElementById("modal-body");
-            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix })}</div>${externalCheckSection}<section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle()" class="px-3 py-2 rounded-lg bg-violet-700 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega / Schematizza</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; disponibilità, limiti gratuiti ed eventuali costi dipendono dal piano e dal modello." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
+            modalBody.innerHTML = `<div>${linkifyLegalReferences(parsedBody.body.innerHTML, { defaultCode: codeSuffix })}</div>${citedBySection}${externalCheckSection}<section class="mt-4 p-4 rounded-xl border border-violet-200 bg-violet-50 font-sans"><div class="flex flex-wrap gap-2"><button onclick="explainCurrentArticle('simple')" title="Spiegazione chiara con esempio pratico e glossario dei termini difficili" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Spiega semplice</button><button onclick="explainCurrentArticle('technical')" title="Analisi tecnico-giuridica: ratio, presupposti, eccezioni, termini e raccordi" class="px-3 py-2 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold"><i class="fa-solid fa-scale-balanced mr-1 text-amber-400"></i>Scheda tecnica</button><button onclick="checkCurrentArticleOnline()" title="Prepara parole chiave e link per verificare online; Gemini non consulta il web." class="px-3 py-2 rounded-lg bg-white border border-violet-300 text-violet-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Prepara ricerca web</button><button onclick="checkCurrentArticleOnlineGrounded()" title="Gemini consulta Google Search con grounding; richiede fatturazione attiva su Google AI." class="px-3 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 text-xs font-semibold"><i class="fa-solid fa-globe mr-1"></i>Verifica online (grounding)</button><button onclick="openLegalDatabaseSearchForCurrentArticle()" title="Genera parole chiave e prepara link alle banche dati" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-900 text-xs font-semibold"><i class="fa-solid fa-building-columns mr-1"></i>Cerca nelle banche dati</button></div><div id="article-ai-output" class="hidden mt-3 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed"></div></section>`;
             modalBody.querySelector('[data-copy-search]')?.addEventListener('click', () => copyTextFallback(articleReference));
+            const citedDetails = modalBody.querySelector('#modal-cited-by');
+            if (citedDetails) {
+                let citedLoaded = false;
+                citedDetails.addEventListener('toggle', () => {
+                    if (!citedDetails.open || citedLoaded) return;
+                    citedLoaded = true;
+                    const listEl = citedDetails.querySelector('#modal-cited-by-list');
+                    if (!listEl) return;
+                    const refs = findLocalCrossReferences(item);
+                    if (!refs.length) {
+                        listEl.textContent = 'Nessun altro articolo nell’archivio locale richiama esplicitamente questo articolo.';
+                        return;
+                    }
+                    listEl.innerHTML = `<p class="mb-2 text-[11px] text-slate-500">Trovati ${refs.length}${refs.length >= 40 ? '+' : ''} articoli locali che richiamano ${escapeHtml(item.article)}:</p><div class="flex flex-wrap gap-1.5">${refs.map(doc => `<button type="button" data-cited-open="${escapeHtml(doc.id)}" class="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50 text-[11px] font-semibold text-slate-800 transition" title="${escapeHtml(doc.title)} (${escapeHtml(doc.source)})">${escapeHtml(shortenLegalLabel(doc.article, 24))}</button>`).join('')}</div>`;
+                    listEl.querySelectorAll('[data-cited-open]').forEach(btn => btn.addEventListener('click', () => openDetailModal(btn.dataset.citedOpen)));
+                });
+            }
             document.getElementById("modal-meta").textContent = `Riferimenti: ${item.source}`;
 
             document.getElementById("modal-copy-btn").onclick = () => {
-                const plainText = `${item.article} - ${item.title}\nNormativa: ${item.source}\n\n${document.getElementById("modal-body").innerText}`;
+                const articleEl = document.getElementById("modal-body")?.firstElementChild;
+                const bodyText = articleEl ? (articleEl.innerText || articleEl.textContent || '').trim() : plainOriginalDocumentText(item);
+                const plainText = `${item.article} - ${item.title}\nNormativa: ${item.source}\n\n${bodyText}`;
                 copyTextFallback(plainText);
             };
 
@@ -2472,7 +2837,7 @@
                     copyTextFallback(`${item.title} (${item.article}). Fonte: ${item.source || item.categoryLabel}. Consultato il ${consultationDate}.`);
                     return;
                 }
-                const directUrl = buildNormattivaArticleUrn(articleReference);
+                const directUrl = hasDirectNormattiva ? resolvedNorm.articleUrl : buildNormattivaArticleUrn(articleReference);
                 const normattivaReference = directUrl
                     ? `Normattiva, testo vigente: ${directUrl}`
                     : `Normattiva, ricerca generale: https://www.normattiva.it/ricerca/avanzata (cerca ${articleReference})`;
@@ -2491,7 +2856,15 @@
                 updateModalBmBtn();
             };
 
+            applyReadingFontSize();
             showLayer('detail-modal');
+            modalBody.scrollTop = 0;
+            const findInput = document.getElementById('modal-find-input');
+            if (findInput) {
+                findInput.value = currentQuery.length >= 2 ? currentQuery : '';
+                if (currentQuery.length >= 2) requestAnimationFrame(() => runModalFind(currentQuery, true));
+                else runModalFind('', false);
+            }
         }
 
         async function updateAiKeyButton() {
@@ -2553,7 +2926,7 @@
         function hideLayer(id) {
             const el = document.getElementById(id); if (!el) return;
             el.classList.add('hidden'); el.classList.remove('flex');
-        const anyOpen = ['detail-modal', 'bookmarks-drawer', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'compare-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'normattiva-download-modal', 'import-modal', 'export-modal', 'pwa-install-modal'].some(key => !document.getElementById(key)?.classList.contains('hidden'));
+        const anyOpen = ['detail-modal', 'bookmarks-drawer', 'toc-modal', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'compare-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'normattiva-download-modal', 'import-modal', 'export-modal', 'pwa-install-modal'].some(key => !document.getElementById(key)?.classList.contains('hidden'));
             if (!anyOpen && modalBodyScrollState !== null) {
                 document.body.style.overflow = modalBodyScrollState.overflow; document.body.style.overscrollBehavior = modalBodyScrollState.overscroll; modalBodyScrollState = null;
             }
@@ -2568,7 +2941,7 @@
                 let testResult = null;
                 try {
                     discovered = await discoverGeminiModels(key, true).catch(() => []);
-                    testResult = await callGemini('Rispondi solo: connessione riuscita.', { maxOutputTokens: 40 });
+                    testResult = await callGemini('Rispondi solo: connessione riuscita.', { maxOutputTokens: 256, minimalThinking: true });
                 } catch (error) { if (oldKey) await storeGeminiKey(oldKey); else await deleteGeminiKey(); throw error; }
                 const usedModel = testResult?.model || activeGeminiModel;
                 if (status) { status.textContent = `Chiave verificata e salvata su questo browser. Modello attivo: ${usedModel}${discovered.length ? ` (${discovered.length} modelli compatibili rilevati)` : ''}.`; status.className = 'text-xs rounded-lg p-2 bg-emerald-50 text-emerald-800'; }
@@ -2587,18 +2960,19 @@
             const query = document.getElementById('main-search-input').value.trim();
             if (!query) { setAiSearchStatus('Scrivi prima un caso o un concetto nella barra di ricerca.', true); return; }
             const button = document.getElementById('ai-semantic-search-button');
+            const originalButtonHtml = button ? button.innerHTML : '';
             try {
                 if (!(await getGeminiKey())) { setAiSearchStatus('Per usare la ricerca AI configura prima la chiave Gemini.'); await openAiSettings(); return; }
                 if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Ricerca concetti in corso…'; }
                 setAiSearchStatus('Gemini sta traducendo la richiesta in concetti giuridici e cercando nel tuo archivio locale…');
-                const result = await callGemini(`Interpreta la domanda in un contesto di ricerca del diritto italiano. Restituisci soltanto 6-12 parole chiave, istituti o sinonimi giuridici utili per cercare nel testo degli articoli. Non rispondere nel merito. Domanda: ${query}`);
+                const result = await callGemini(`Interpreta la domanda in un contesto di ricerca del diritto italiano. Restituisci soltanto 6-12 parole chiave, istituti o sinonimi giuridici utili per cercare nel testo degli articoli. Non rispondere nel merito. Domanda: ${query}`, { maxOutputTokens: 600, minimalThinking: true });
                 aiSearchTerms = result.text.split(/[\n,;•]+/).map(s => s.replace(/^[-*\d.)\s]+/, '').trim()).filter(s => s.length > 2).slice(0, 12);
                 currentQuery = query; resultsLimit = 100;
                 const archivePanel = document.getElementById('archive-panel'); if (archivePanel) archivePanel.open = true;
                 await ensureImportedDocsLoaded(); await ensureSearchIndexBuilt(); renderResults();
                 setAiSearchStatus(aiSearchTerms.length ? `Ricerca AI completata. Concetti usati: ${aiSearchTerms.join(', ')}. I risultati restano filtrati nel tuo archivio locale.` : 'Gemini non ha prodotto concetti di ricerca. Riprova con una descrizione più dettagliata.', !aiSearchTerms.length);
             } catch (error) { setAiSearchStatus('Ricerca AI non completata: ' + (error.message || 'errore di rete o API key non valida.'), true); }
-            finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Cerca per concetti con AI'; } }
+            finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.innerHTML = originalButtonHtml; } }
         }
         function openAskCodes() { document.getElementById('ask-codes-output')?.classList.add('hidden'); showLayer('ask-codes-modal'); document.getElementById('ask-codes-question')?.focus(); }
         function closeAskCodes() { hideLayer('ask-codes-modal'); }
@@ -2730,9 +3104,9 @@
             if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); button.textContent = 'Preparo la ricerca…'; }
             termsBox.textContent = 'Gemini sta ricavando le parole chiave…';
             try {
-                const result = await callGemini(`Per una ricerca giuridica italiana, estrai i riferimenti e le parole chiave. Rispondi esclusivamente con un singolo oggetto JSON valido, senza markdown e senza ritorni a capo dentro i valori testuali, nello schema: {"articoli":[{"codice":"c.c.","numero":"844"}],"atti":[{"tipo":"D.Lgs.","numero":"231","anno":"2001"}],"parole_chiave":["immissioni","normale tollerabilità"]}. Inserisci solo campi che riesci a identificare; mantieni i numeri citati nella richiesta e non inventare URL o date. Le voci suggerite devono essere verificate dall'utente. Richiesta: ${query}`, { maxOutputTokens: 500 });
+                const result = await callGemini(`Per una ricerca giuridica italiana, estrai i riferimenti e le parole chiave. Rispondi esclusivamente con un singolo oggetto JSON valido, senza markdown e senza ritorni a capo dentro i valori testuali, nello schema: {"articoli":[{"codice":"c.c.","numero":"844"}],"atti":[{"tipo":"D.Lgs.","numero":"231","anno":"2001"}],"parole_chiave":["immissioni","normale tollerabilità"]}. Inserisci solo campi che riesci a identificare; mantieni i numeri citati nella richiesta e non inventare URL o date. Le voci suggerite devono essere verificate dall'utente. Richiesta: ${query}`, { maxOutputTokens: 900, minimalThinking: true });
                 const parsed = parseGeminiJsonPayload(result.text);
-                const codeAliases = { cc:'c.c.', codicecivile:'c.c.', cp:'c.p.', codicepenale:'c.p.', cpc:'c.p.c.', codiceproceduracivile:'c.p.c.', cpp:'c.p.p.', codiceprocedurapenale:'c.p.p.', cost:'Cost.', costituzione:'Cost.' };
+                const codeAliases = { cc:'c.c.', codicecivile:'c.c.', cp:'c.p.', codicepenale:'c.p.', cpc:'c.p.c.', codiceproceduracivile:'c.p.c.', codicediproceduracivile:'c.p.c.', cpp:'c.p.p.', codiceprocedurapenale:'c.p.p.', codicediprocedurapenale:'c.p.p.', cost:'Cost.', costituzione:'Cost.' };
                 const articles = (Array.isArray(parsed.articoli) ? parsed.articoli : []).map(row => {
                     const number = String(row?.numero || '').trim();
                     const codeKey = normalizeSearchText(row?.codice || '').replace(/[^a-z]/g, '');
@@ -2825,6 +3199,28 @@
             } catch (error) { termsBox.textContent = 'Preparazione non riuscita: ' + (error.message || 'controlla connessione e API key.'); }
             finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = 'Genera parole chiave e link'; } }
         }
+        function isGroundingFreeTierError(error) {
+            const msg = String(error?.message || '').toLowerCase();
+            return error?.status === 429 || error?.status === 403
+                || /quota|resource_exhausted|grounding|google.?search|billing|free.?tier/.test(msg);
+        }
+        function renderGroundingFreeTierFallback(container, onSwitchFreeMode) {
+            if (!container) return;
+            const box = document.createElement('div');
+            box.className = 'mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950 space-y-2';
+            const p = document.createElement('p');
+            p.innerHTML = '<strong>Nota sul piano gratuito (Free Tier):</strong> la ricerca web diretta con Google Search (grounding) richiede un account di fatturazione attivo su Google AI Studio. Puoi però usare subito la modalità gratuita <strong>“Parole chiave e link”</strong>.';
+            box.append(p);
+            if (typeof onSwitchFreeMode === 'function') {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold transition';
+                btn.textContent = 'Usa subito la modalità gratuita (Parole chiave e link)';
+                btn.onclick = onSwitchFreeMode;
+                box.append(btn);
+            }
+            container.append(box);
+        }
         async function searchWebWithGemini() {
             const question = document.getElementById('web-search-question').value.trim();
             const output = document.getElementById('web-search-output');
@@ -2844,11 +3240,20 @@
                     renderGroundingSources(sourcesBox, result.grounding);
                     return;
                 }
-                const result = await callGemini(`Per una ricerca giuridica italiana, trasforma la richiesta in 6-10 parole chiave, riferimenti normativi o sinonimi utili per cercare online. Rispondi solo con termini separati da virgole, senza dare una risposta di merito e senza fingere di aver consultato fonti. Conserva i riferimenti normativi espliciti. Richiesta: ${question}`, { maxOutputTokens: 300 });
+                const result = await callGemini(`Per una ricerca giuridica italiana, trasforma la richiesta in 6-10 parole chiave, riferimenti normativi o sinonimi utili per cercare online. Rispondi solo con termini separati da virgole, senza dare una risposta di merito e senza fingere di aver consultato fonti. Conserva i riferimenti normativi espliciti. Richiesta: ${question}`, { maxOutputTokens: 600, minimalThinking: true });
                 const keywords = result.text.split(/[\n,;•]+/).map(term => term.replace(/^[-*\d.)\s]+/, '').trim()).filter(term => term.length > 2).slice(0, 10);
                 answerBox.textContent = `Parole chiave suggerite da Gemini: ${keywords.join(' · ') || 'nessuna aggiuntiva'}\n\nGemini non ha cercato né verificato pagine online. Usa i collegamenti qui sotto per aprire le ricerche e controllare direttamente le fonti.`;
                 renderManualWebSearchLinks(sourcesBox, question, keywords);
-            } catch (error) { answerBox.textContent = 'Ricerca web non completata: ' + (error.message || 'controlla la connessione e la chiave Gemini.'); }
+            } catch (error) {
+                answerBox.textContent = 'Ricerca web non completata: ' + (error.message || 'controlla la connessione e la chiave Gemini.');
+                if (useGrounding && isGroundingFreeTierError(error)) {
+                    renderGroundingFreeTierFallback(sourcesBox, () => {
+                        const manualRadio = document.querySelector('input[name="web-search-mode"][value="manual"]');
+                        if (manualRadio) manualRadio.checked = true;
+                        searchWebWithGemini();
+                    });
+                }
+            }
             finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = 'Avvia la modalità selezionata'; } }
         }
         function getAskQuestionTerms(value) {
@@ -2882,7 +3287,7 @@
                 await ensureImportedDocsLoaded();
                 await ensureSearchIndexBuilt();
                 answerBox.textContent = 'Gemini interpreta la domanda; poi cercherò gli articoli corrispondenti nel tuo archivio locale…';
-                const expansion = await callGemini(`Per una ricerca nel diritto italiano, trasforma la domanda in 8-12 parole chiave, istituti e sinonimi giuridici. Rispondi solo con i termini separati da virgole. Non dare la risposta. Domanda: ${question}`, { maxOutputTokens: 250 });
+                const expansion = await callGemini(`Per una ricerca nel diritto italiano, trasforma la domanda in 8-12 parole chiave, istituti e sinonimi giuridici. Rispondi solo con i termini separati da virgole. Non dare la risposta. Domanda: ${question}`, { maxOutputTokens: 600, minimalThinking: true });
                 const terms = expansion.text.split(/[\n,;•]+/).map(s => s.replace(/^[-*\d.)\s]+/, '').trim()).filter(s => s.length > 2).slice(0, 12);
                 const questionTerms = getAskQuestionTerms(question);
                 const questionTermSet = new Set(questionTerms);
@@ -2930,7 +3335,17 @@
                     if (useGrounding) renderGroundingSources(webSourcesBox, answer.grounding);
                     else renderManualWebSearchLinks(webSourcesBox, question, terms);
                 }
-            } catch (error) { answerBox.textContent = 'La richiesta non è riuscita: ' + (error.message || 'controlla connessione e API key.'); }
+            } catch (error) {
+                answerBox.textContent = 'La richiesta non è riuscita: ' + (error.message || 'controlla connessione e API key.');
+                if (useGrounding && isGroundingFreeTierError(error)) {
+                    webSourcesBox.classList.remove('hidden');
+                    renderGroundingFreeTierFallback(webSourcesBox, () => {
+                        const fallbackRadio = document.querySelector('input[name="ask-codes-source-mode"][value="archive-web"]');
+                        if (fallbackRadio) fallbackRadio.checked = true;
+                        askYourCodes();
+                    });
+                }
+            }
             finally { if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.textContent = 'Cerca e chiedi'; } }
         }
         function renderGroundingSources(container, grounding) {
@@ -2956,10 +3371,15 @@
                 card.append(title, excerpt); container.append(card);
             });
         }
-        async function explainCurrentArticle() {
+        async function explainCurrentArticle(level = 'simple') {
             const item = currentAiArticle; const output = document.getElementById('article-ai-output'); if (!item || !output) return;
-            output.classList.remove('hidden'); output.textContent = 'Gemini sta preparando la spiegazione…';
-            try { const response = await callGemini(`Spiega in italiano semplice questo articolo del diritto italiano. Organizza in: Sintesi; Presupposti; Eccezioni/limiti; Termini o conseguenze (solo se presenti nel testo). Non aggiungere regole non contenute. Cita come fonte ${item.article}, ${item.source}.\n\n${plainDocumentText(item).slice(0, 9000)}`); output.textContent = response.text; }
+            const isTechnical = level === 'technical';
+            output.classList.remove('hidden');
+            output.textContent = isTechnical ? 'Gemini sta preparando la scheda tecnica…' : 'Gemini sta preparando la spiegazione semplice…';
+            const prompt = isTechnical
+                ? `Redigi una scheda tecnico-giuridica sintetica e rigorosa di questo articolo del diritto italiano per professionisti. Organizza in: 1) Ratio e ambito applicativo; 2) Presupposti e requisiti; 3) Eccezioni, limiti o cause di esclusione; 4) Termini, sanzioni o effetti giuridici (solo se presenti nel testo); 5) Rinvii sistematici citati nel testo. Non aggiungere regole non contenute. Cita come fonte ${item.article}, ${item.source}.\n\n${plainOriginalDocumentText(item).slice(0, 9000)}`
+                : `Spiega questo articolo del diritto italiano in linguaggio chiaro e comprensibile anche a chi non è giurista. Organizza in: 1) In parole semplici (cosa stabilisce); 2) Esempio pratico concreto; 3) Punti chiave ed eccezioni (solo se presenti nel testo); 4) Piccolo glossario dei termini tecnici usati nel testo. Non inventare regole non presenti. Cita come fonte ${item.article}, ${item.source}.\n\n${plainOriginalDocumentText(item).slice(0, 9000)}`;
+            try { const response = await callGemini(prompt, { maxOutputTokens: 2000 }); output.textContent = response.text; }
             catch (error) { output.textContent = error.message; }
         }
         async function checkCurrentArticleOnline() {
@@ -2968,7 +3388,7 @@
             try {
                 const cleanTitle = String(item.title || '').replace(/^\s*Art(?:icolo)?\.?\s*[\d\s.-]+(?:bis|ter|quater|quinquies|sexies|septies|octies|novies|decies)?\s*[-.:—–]*\s*/i, '').trim();
                 const baseRef = [item.article, cleanTitle, item.source].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-                const result = await callGemini(`Per verificare una norma del diritto italiano (eventuali modifiche recenti e giurisprudenza), proponi 6-10 parole chiave e riferimenti da cercare nelle fonti ufficiali. Rispondi solo con termini separati da virgole; non affermare di avere consultato il web e non descrivere aggiornamenti come verificati. Riferimento: ${baseRef}`, { maxOutputTokens: 300 });
+                const result = await callGemini(`Per verificare una norma del diritto italiano (eventuali modifiche recenti e giurisprudenza), proponi 6-10 parole chiave e riferimenti da cercare nelle fonti ufficiali. Rispondi solo con termini separati da virgole; non affermare di avere consultato il web e non descrivere aggiornamenti come verificati. Riferimento: ${baseRef}`, { maxOutputTokens: 600, minimalThinking: true });
                 const keywords = result.text.split(/[\n,;•]+/).map(term => term.replace(/^[-*\d.)\s]+/, '').trim()).filter(term => term.length > 2).slice(0, 10);
                 output.textContent = `Parole chiave suggerite: ${keywords.join(' · ') || 'nessuna aggiuntiva'}. Gemini non ha consultato né verificato il web. Apri una ricerca e controlla direttamente date e fonti.`;
                 const links = document.createElement('div'); links.className = 'mt-3'; output.append(links);
@@ -2982,7 +3402,12 @@
                 const result = await callGemini(`Verifica online eventuali modifiche recenti o pronunce rilevanti relative a ${item.article} ${item.title} (${item.source}), privilegiando Normattiva, Gazzetta Ufficiale, Corte costituzionale e Corte di Cassazione. Riporta date, descrizione e link delle fonti effettivamente trovate. Se le fonti non sono ufficiali o non trovi conferme, dichiaralo. Distingui chiaramente i risultati verificati dalle interpretazioni.`, { googleSearch: true, maxOutputTokens: 2200 });
                 output.textContent = `VERIFICA ONLINE CON GROUNDING — risultati da controllare sulle fonti ufficiali.\n\n${result.text}`;
                 const links = document.createElement('div'); links.className = 'mt-3'; output.append(links); renderGroundingSources(links, result.grounding);
-            } catch (error) { output.textContent = error.message; }
+            } catch (error) {
+                output.textContent = error.message;
+                if (isGroundingFreeTierError(error)) {
+                    renderGroundingFreeTierFallback(output, () => checkCurrentArticleOnline());
+                }
+            }
         }
         async function structureImportedTextWithAI() {
             const area = document.getElementById('import-raw-text'); const text = area?.value.trim(); if (!text) return showToast('Carica prima un PDF o incolla il testo.');
@@ -3124,10 +3549,15 @@
         }
 
         function clearAllBookmarks() {
+            if (!bookmarks.length) return showToast('Non ci sono segnalibri da rimuovere.');
+            if (!window.confirm('Vuoi eliminare tutti i segnalibri (' + bookmarks.length + '), i fascicoli e le note personali? L’operazione non può essere annullata.')) return;
             bookmarks = [];
             bookmarkNotes = {};
+            bookmarkFolders = {};
+            bookmarkFolderFilter = '';
             saveBookmarks();
             saveBookmarkNotes();
+            saveBookmarkFolders();
             updateBookmarkUI();
             renderResults();
             showToast("Segnalibri svuotati");
@@ -3136,36 +3566,111 @@
             bookmarkFilterQuery = String(value || '').trim().toLowerCase();
             updateBookmarkUI();
         }
+        function filterBookmarksByFolder(value) {
+            bookmarkFolderFilter = String(value || '');
+            updateBookmarkUI();
+        }
+        function getFilteredBookmarkDocs() {
+            const docsById = new Map(getAllDocuments().map(d => [d.id, d]));
+            return bookmarks.filter(id => {
+                const item = docsById.get(id);
+                if (!item) return false;
+                const folder = bookmarkFolders[id] || '';
+                if (bookmarkFolderFilter === '__NONE__' && folder) return false;
+                if (bookmarkFolderFilter && bookmarkFolderFilter !== '__NONE__' && folder !== bookmarkFolderFilter) return false;
+                if (!bookmarkFilterQuery) return true;
+                const note = bookmarkNotes[id] || '';
+                return [item.article, item.title, item.source, folder, note].join(' ').toLowerCase().includes(bookmarkFilterQuery);
+            }).map(id => docsById.get(id));
+        }
+        function exportBookmarksDossierMarkdown() {
+            const docs = getFilteredBookmarkDocs();
+            if (!docs.length) return showToast('Nessun segnalibro da esportare nel dossier.');
+            const today = new Date().toLocaleDateString('it-IT');
+            const title = bookmarkFolderFilter && bookmarkFolderFilter !== '__NONE__' ? `Dossier — ${bookmarkFolderFilter}` : 'Dossier Normativo — Lex';
+            const md = [
+                `# ${title}`,
+                `_Esportato da Lex il ${today} · ${docs.length} ${docs.length === 1 ? 'norma' : 'norme'}_`,
+                '',
+                ...docs.flatMap((item, idx) => {
+                    const folder = bookmarkFolders[item.id] || '';
+                    const note = bookmarkNotes[item.id] || '';
+                    const text = plainOriginalDocumentText(item);
+                    return [
+                        `## ${idx + 1}. ${item.article} — ${item.title}`,
+                        `**Fonte:** ${item.source || item.categoryLabel}${folder ? ` · **Fascicolo:** ${folder}` : ''}`,
+                        '',
+                        text,
+                        ...(note ? ['', `> **Nota personale:** ${note}`] : []),
+                        '',
+                        '---',
+                        ''
+                    ];
+                })
+            ].join('\n');
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const slug = (bookmarkFolderFilter && bookmarkFolderFilter !== '__NONE__' ? bookmarkFolderFilter : 'dossier').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'dossier';
+            a.href = url; a.download = `lex_${slug}_${new Date().toISOString().slice(0, 10)}.md`;
+            a.click(); URL.revokeObjectURL(url);
+            showToast('Dossier Markdown esportato (' + docs.length + ' norme).');
+        }
+        function printBookmarksDossier() {
+            const docs = getFilteredBookmarkDocs();
+            if (!docs.length) return showToast('Nessun segnalibro da stampare.');
+            const today = new Date().toLocaleDateString('it-IT');
+            const title = bookmarkFolderFilter && bookmarkFolderFilter !== '__NONE__' ? `Fascicolo: ${bookmarkFolderFilter}` : 'Dossier Normative Salvate';
+            const itemsHtml = docs.map((item, idx) => {
+                const folder = bookmarkFolders[item.id] || '';
+                const note = bookmarkNotes[item.id] || '';
+                return `<article class="print-item"><h2>${idx + 1}. ${escapeHtml(item.article)} — ${escapeHtml(item.title)}</h2><p class="print-source">${escapeHtml(item.source || item.categoryLabel)}${folder ? ' · Fascicolo: ' + escapeHtml(folder) : ''}</p><div>${sanitizeImportedHtml(item.fullText || '')}</div>${note ? `<div class="print-note"><strong>Nota personale:</strong>\n${escapeHtml(note)}</div>` : ''}</article>`;
+            }).join('');
+            printSheetHtml(title, `Lex — Esportazione dossier · ${today} · ${docs.length} norme`, itemsHtml);
+        }
 
         function updateBookmarkUI() {
             const count = document.getElementById("bookmark-count");
             if (count) count.textContent = bookmarks.length;
+            const folderSelect = document.getElementById('bookmarks-folder-filter');
+            const datalist = document.getElementById('bookmark-folders-datalist');
+            const uniqueFolders = [...new Set(bookmarks.map(id => String(bookmarkFolders[id] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it'));
+            if (folderSelect) {
+                const prevVal = bookmarkFolderFilter;
+                folderSelect.innerHTML = '<option value="">Tutti i fascicoli</option>'
+                    + uniqueFolders.map(f => `<option value="${escapeHtml(f)}"${prevVal === f ? ' selected' : ''}>${escapeHtml(f)}</option>`).join('')
+                    + (uniqueFolders.length ? `<option value="__NONE__"${prevVal === '__NONE__' ? ' selected' : ''}>Senza fascicolo</option>` : '');
+                if (prevVal && prevVal !== '__NONE__' && !uniqueFolders.includes(prevVal)) {
+                    bookmarkFolderFilter = '';
+                    folderSelect.value = '';
+                }
+            }
+            if (datalist) {
+                datalist.innerHTML = uniqueFolders.map(f => `<option value="${escapeHtml(f)}"></option>`).join('');
+            }
             const list = document.getElementById("bookmarks-list");
             if (!list) return;
             if (bookmarks.length === 0) {
                 list.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">Nessuna norma salvata. Clicca sull'icona segnalibro accanto a un risultato per conservarlo qui.</p>`;
                 return;
             }
-            const docsById = new Map(getAllDocuments().map(d => [d.id, d]));
-            const filteredIds = bookmarks.filter(id => {
-                const item = docsById.get(id);
-                if (!item) return false;
-                if (!bookmarkFilterQuery) return true;
-                const note = bookmarkNotes[id] || '';
-                return [item.article, item.title, item.source, note].join(' ').toLowerCase().includes(bookmarkFilterQuery);
-            });
-            if (!filteredIds.length) {
-                list.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">Nessun segnalibro corrisponde al filtro.</p>`;
+            const filteredDocs = getFilteredBookmarkDocs();
+            if (!filteredDocs.length) {
+                list.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">Nessun segnalibro corrisponde al filtro o al fascicolo selezionato.</p>`;
                 return;
             }
-            list.innerHTML = filteredIds.map(id => {
-                const item = docsById.get(id);
+            list.innerHTML = filteredDocs.map(item => {
+                const id = item.id;
+                const folderVal = bookmarkFolders[id] || '';
                 const noteVal = bookmarkNotes[id] || '';
                 return `
                 <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                     <div class="flex items-start justify-between gap-2">
                         <div class="cursor-pointer flex-1 min-w-0" data-bookmark-open="${escapeHtml(item.id)}">
-                            <span class="text-[11px] font-bold text-amber-700">${escapeHtml(item.article)}</span>
+                            <div class="flex flex-wrap items-center gap-1.5">
+                                <span class="text-[11px] font-bold text-amber-700">${escapeHtml(item.article)}</span>
+                                ${folderVal ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-900"><i class="fa-solid fa-folder mr-1"></i>${escapeHtml(folderVal)}</span>` : ''}
+                            </div>
                             <h5 class="text-xs font-bold text-slate-800 mt-0.5">${escapeHtml(item.title)}</h5>
                             <p class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(item.source)}</p>
                         </div>
@@ -3173,9 +3678,12 @@
                             <i class="fa-solid fa-trash-can text-xs"></i>
                         </button>
                     </div>
-                    <div class="flex items-center gap-1.5">
-                        <input type="text" value="${escapeHtml(noteVal)}" data-bookmark-note-input="${escapeHtml(item.id)}" placeholder="Nota personale / fascicolo…" class="flex-1 text-[11px] bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-amber-500">
-                        <button type="button" data-bookmark-note-save="${escapeHtml(item.id)}" class="px-2.5 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-[11px] font-semibold shrink-0" title="Salva nota">Salva</button>
+                    <div class="space-y-1.5">
+                        <div class="flex items-center gap-1.5">
+                            <input type="text" list="bookmark-folders-datalist" value="${escapeHtml(folderVal)}" data-bookmark-folder-input="${escapeHtml(item.id)}" placeholder="Fascicolo / pratica (es. Causa Rossi)…" class="flex-1 text-[11px] bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 focus:outline-none focus:border-amber-500">
+                            <button type="button" data-bookmark-note-save="${escapeHtml(item.id)}" class="px-2.5 py-1 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-[11px] font-semibold shrink-0" title="Salva fascicolo e nota">Salva</button>
+                        </div>
+                        <textarea rows="2" data-bookmark-note-input="${escapeHtml(item.id)}" placeholder="Note personali, appunti udienza, scadenze…" class="w-full text-[11px] bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-amber-500">${escapeHtml(noteVal)}</textarea>
                     </div>
                 </div>`;
             }).join("");
@@ -3183,11 +3691,17 @@
             list.querySelectorAll('[data-bookmark-remove]').forEach(button => button.addEventListener('click', () => toggleBookmark(button.dataset.bookmarkRemove)));
             list.querySelectorAll('[data-bookmark-note-save]').forEach(button => button.addEventListener('click', () => {
                 const id = button.dataset.bookmarkNoteSave;
-                const input = list.querySelector(`[data-bookmark-note-input="${CSS.escape(id)}"]`);
-                if (input) updateBookmarkNote(id, input.value);
+                const noteInput = list.querySelector(`[data-bookmark-note-input="${CSS.escape(id)}"]`);
+                const folderInput = list.querySelector(`[data-bookmark-folder-input="${CSS.escape(id)}"]`);
+                updateBookmarkMeta(id, folderInput?.value || '', noteInput?.value || '');
             }));
-            list.querySelectorAll('[data-bookmark-note-input]').forEach(input => input.addEventListener('keydown', ev => {
-                if (ev.key === 'Enter') { ev.preventDefault(); updateBookmarkNote(input.dataset.bookmarkNoteInput, input.value); }
+            list.querySelectorAll('[data-bookmark-folder-input]').forEach(input => input.addEventListener('keydown', ev => {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    const id = input.dataset.bookmarkFolderInput;
+                    const noteInput = list.querySelector(`[data-bookmark-note-input="${CSS.escape(id)}"]`);
+                    updateBookmarkMeta(id, input.value, noteInput?.value || '');
+                }
             }));
         }
 
@@ -3219,6 +3733,25 @@
                 a.abbr.toLowerCase().includes(q) || a.full.toLowerCase().includes(q)
             );
             renderAbbreviations(filtered);
+        }
+        function renderGlossary(list) {
+            const box = document.getElementById('glossary-list');
+            if (!box) return;
+            if (!list.length) {
+                box.innerHTML = '<p class="py-3 text-slate-500 text-center">Nessun termine trovato.</p>';
+                return;
+            }
+            box.innerHTML = list.map(entry => `
+                <div class="py-2 space-y-0.5">
+                    <div class="font-bold text-navy-900">${escapeHtml(entry.term)}</div>
+                    <p class="text-slate-600 leading-snug">${escapeHtml(entry.def)}</p>
+                </div>
+            `).join('');
+        }
+        function filterGlossary() {
+            const q = (document.getElementById('glossary-filter')?.value || '').trim().toLowerCase();
+            const filtered = legalGlossary.filter(g => g.term.toLowerCase().includes(q) || g.def.toLowerCase().includes(q));
+            renderGlossary(filtered);
         }
 
         async function copyTextFallback(text) {
@@ -3640,6 +4173,24 @@
             renderSingleArticleUpdateCodes();
             renderImportedSourceFilters();
             renderImportedShortcuts();
+            renderHomeArchiveStatus();
+        }
+        function renderHomeArchiveStatus() {
+            const box = document.getElementById('home-archive-status');
+            if (!box) return;
+            const baseCount = legalDatabase.length;
+            if (!importedDocsLoaded) {
+                box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600"><span><i class="fa-solid fa-database text-amber-600 mr-1.5"></i><strong>Archivio locale pronto:</strong> ${baseCount} schede di sintesi incluse · i tuoi codici salvati vengono caricati alla prima ricerca.</span><div class="flex flex-wrap gap-2"><button type="button" onclick="openNormattivaDownloadModal()" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 font-semibold transition"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>Scarica da Normattiva</button><button type="button" onclick="openImportModal()" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-semibold transition"><i class="fa-solid fa-file-import mr-1"></i>Importa (.zip, .json, .epub, .pdf)</button></div></div>`;
+                return;
+            }
+            const groups = getImportedCodeGroups();
+            const codeGroups = groups.filter(g => !g.isManual);
+            const manualGroups = groups.filter(g => g.isManual);
+            if (!groups.length) {
+                box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700"><span><i class="fa-solid fa-circle-info text-amber-600 mr-1.5"></i><strong>Archivio locale:</strong> ${baseCount} schede base · <strong>0 codici completi importati</strong>. Per cercare in tutto il Codice Civile, Penale o altre leggi, scarica lo <code>.zip</code> da Normattiva e importalo qui.</span><div class="flex flex-wrap gap-2"><button type="button" onclick="openNormattivaDownloadModal()" class="px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold transition"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>Aggiungi il tuo primo codice</button><button type="button" onclick="openImportModal()" class="px-3 py-1.5 rounded-lg bg-white hover:bg-amber-50 border border-amber-300 text-amber-900 font-semibold transition"><i class="fa-solid fa-file-import mr-1"></i>Importa file</button></div></div>`;
+            } else {
+                box.innerHTML = `<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700"><span><i class="fa-solid fa-circle-check text-emerald-600 mr-1.5"></i><strong>Archivio locale:</strong> ${baseCount} schede base · <strong>${codeGroups.length}</strong> ${codeGroups.length === 1 ? 'codice' : 'codici'} · <strong>${manualGroups.length}</strong> ${manualGroups.length === 1 ? 'manuale' : 'manuali'} (${importedDocs.length.toLocaleString('it-IT')} voci indicizzate)</span><div class="flex flex-wrap gap-2"><button type="button" onclick="openTocModal()" class="px-3 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white font-semibold transition"><i class="fa-solid fa-sitemap mr-1 text-amber-400"></i>Sfoglia indice codici</button><button type="button" onclick="openImportModal()" class="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold transition"><i class="fa-solid fa-plus mr-1"></i>Importa altro</button></div></div>`;
+            }
         }
         function setImportedSourceFilter(key) {
             document.getElementById('archive-panel').open = true;
@@ -3657,6 +4208,84 @@
             exactPhraseOnly = Boolean(value);
             document.getElementById('archive-panel').open = true;
             renderResults();
+        }
+        function setExcludeAbrogated(value) {
+            excludeAbrogated = Boolean(value);
+            document.getElementById('archive-panel').open = true;
+            renderResults();
+        }
+        function setConstitutionalOnly(value) {
+            constitutionalOnly = Boolean(value);
+            document.getElementById('archive-panel').open = true;
+            renderResults();
+        }
+        function setTitleOnlySearch(value) {
+            titleOnlySearch = Boolean(value);
+            document.getElementById('archive-panel').open = true;
+            renderResults();
+        }
+        async function openTocModal(preselectedSourceKey = '') {
+            lastFocusedElement = document.activeElement;
+            showLayer('toc-modal');
+            const treeBox = document.getElementById('toc-tree-container');
+            if (treeBox) treeBox.innerHTML = '<p class="text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Caricamento indice…</p>';
+            try {
+                await ensureImportedDocsLoaded();
+                const groups = getImportedCodeGroups();
+                const select = document.getElementById('toc-source-select');
+                if (!groups.length) {
+                    if (select) select.innerHTML = '<option value="">Nessun codice o manuale importato</option>';
+                    if (treeBox) treeBox.innerHTML = '<div class="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-600 space-y-2"><p>Non hai ancora importato codici o manuali.</p><button type="button" onclick="closeTocModal();openNormattivaDownloadModal()" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white font-semibold">Scarica un codice da Normattiva</button></div>';
+                    return;
+                }
+                if (select) {
+                    const currentVal = preselectedSourceKey || select.value || groups[0].key;
+                    select.innerHTML = groups.map(g => `<option value="${escapeHtml(g.key)}"${g.key === currentVal ? ' selected' : ''}>${escapeHtml(g.label)} (${g.docs.length.toLocaleString('it-IT')} ${g.isManual ? 'cap.' : 'art.'})</option>`).join('');
+                }
+                const filterEl = document.getElementById('toc-filter-input');
+                if (filterEl) filterEl.value = '';
+                renderTocTree();
+            } catch (error) {
+                if (treeBox) treeBox.textContent = 'Impossibile caricare l’indice: ' + (error.message || 'errore di lettura');
+            }
+        }
+        function closeTocModal() { hideLayer('toc-modal'); lastFocusedElement?.focus(); }
+        function renderTocTree() {
+            const select = document.getElementById('toc-source-select');
+            const treeBox = document.getElementById('toc-tree-container');
+            const filterQ = (document.getElementById('toc-filter-input')?.value || '').trim().toLowerCase();
+            if (!select || !treeBox) return;
+            const group = getImportedCodeGroups().find(g => g.key === select.value);
+            if (!group) { treeBox.innerHTML = '<p class="text-xs text-slate-500">Seleziona un codice o manuale.</p>'; return; }
+            const docs = [...group.docs].sort((a, b) => (Number.isFinite(a.orderIndex) && Number.isFinite(b.orderIndex)) ? a.orderIndex - b.orderIndex : String(a.article || '').localeCompare(String(b.article || ''), 'it', { numeric: true }));
+            const filtered = filterQ
+                ? docs.filter(d => [d.sectionPath || '', d.article || '', d.title || ''].join(' ').toLowerCase().includes(filterQ))
+                : docs;
+            if (!filtered.length) { treeBox.innerHTML = '<p class="text-xs text-slate-500 text-center py-6">Nessuna voce corrisponde al filtro.</p>'; return; }
+            // Raggruppa per sectionPath (Libro › Titolo › Capo › Sezione)
+            const sections = new Map();
+            filtered.forEach(doc => {
+                const sec = String(doc.sectionPath || (isManualDocument(doc) ? 'Capitoli e sezioni' : 'Articoli del codice')).trim();
+                if (!sections.has(sec)) sections.set(sec, []);
+                sections.get(sec).push(doc);
+            });
+            const autoOpen = sections.size <= 3 || Boolean(filterQ);
+            treeBox.innerHTML = [...sections.entries()].map(([secName, items]) => `
+                <details class="rounded-xl border border-slate-200 bg-slate-50"${autoOpen ? ' open' : ''}>
+                    <summary class="list-none cursor-pointer px-3.5 py-2.5 text-xs font-bold text-slate-800 flex items-center justify-between gap-2">
+                        <span class="min-w-0 truncate" title="${escapeHtml(secName)}"><i class="fa-solid fa-layer-group mr-1.5 text-amber-600"></i>${escapeHtml(secName)}</span>
+                        <span class="shrink-0 text-[11px] font-medium text-slate-500">${items.length} ${items.length === 1 ? 'voce' : 'voci'}</span>
+                    </summary>
+                    <div class="border-t border-slate-200 bg-white divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                        ${items.slice(0, 250).map(doc => `<button type="button" data-toc-open="${escapeHtml(doc.id)}" class="w-full text-left px-3.5 py-2 hover:bg-amber-50 text-xs flex items-baseline gap-2 transition"><span class="font-bold text-amber-700 shrink-0">${escapeHtml(shortenLegalLabel(doc.article, 22))}</span><span class="text-slate-700 truncate">${escapeHtml(doc.title)}</span></button>`).join('')}
+                        ${items.length > 250 ? `<p class="px-3.5 py-2 text-[11px] text-slate-500">Mostrate prime 250 voci di ${items.length}. Usa il filtro sopra per restringere.</p>` : ''}
+                    </div>
+                </details>
+            `).join('');
+            treeBox.querySelectorAll('[data-toc-open]').forEach(btn => btn.addEventListener('click', () => {
+                closeTocModal();
+                openDetailModal(btn.dataset.tocOpen);
+            }));
         }
         function renderImportedSourceFilters() {
             const box = document.getElementById('imported-source-filters'); if (!box) return;
@@ -3712,6 +4341,7 @@
         }
         async function applyImportedDocs(entries, fallbackSource) {
             if (!entries.length) return 0;
+            await ensureImportedDocsLoaded();
             const sourceName = String(fallbackSource || '').trim();
             invalidateSearchIndex();
             let prepared = entries.map((doc, i) => ({ ...doc,
@@ -3739,7 +4369,16 @@
                     .sort((a, b) => String(b.fullText || '').length - String(a.fullText || '').length);
                 if (!matchingImport.length) throw new Error('Nel file non trovo l’articolo ' + targetArticle + '. Nessun dato è stato modificato.');
                 const previous = matchingExisting[0];
-                const replacement = { ...matchingImport[0], id: previous.id, source: previous.source, category: previous.category, categoryLabel: previous.categoryLabel };
+                const replacement = {
+                    ...matchingImport[0],
+                    id: previous.id,
+                    source: previous.source,
+                    category: previous.category,
+                    categoryLabel: previous.categoryLabel,
+                    ...(Number.isFinite(previous.orderIndex) ? { orderIndex: previous.orderIndex } : {}),
+                    ...(previous.sectionPath && !matchingImport[0].sectionPath ? { sectionPath: previous.sectionPath } : {}),
+                    ...(previous.vigenzaDate && !matchingImport[0].vigenzaDate ? { vigenzaDate: previous.vigenzaDate } : {})
+                };
                 const replacedIds = new Set(matchingExisting.map(doc => doc.id));
                 removedIds = new Set([...replacedIds].filter(id => id !== previous.id));
                 importedDocs = [replacement, ...oldDocs.filter(doc => !replacedIds.has(doc.id))];
@@ -4179,6 +4818,63 @@
                     }
                     return;
                 }
+                if (file.name.toLowerCase().endsWith('.zip')) {
+                    isImporting = true;
+                    setImportBusy('Apertura ZIP…', 'Sto estraendo i file normativi dall’archivio .zip…');
+                    try {
+                        const zip = await readZipEntriesFromBuffer(await file.arrayBuffer());
+                        const entryNames = [...zip.entries.keys()].filter(n => !n.startsWith('__MACOSX/') && !n.endsWith('/'));
+                        const jsonEntries = entryNames.filter(n => n.toLowerCase().endsWith('.json'));
+                        if (jsonEntries.length) {
+                            const selectedCat = document.getElementById('import-category-select')?.value || 'notebook';
+                            let allZipEntries = [];
+                            let detectedTitle = '';
+                            for (const jName of jsonEntries) {
+                                const jText = await zip.getEntryText(jName);
+                                if (!jText) continue;
+                                let data;
+                                try { data = JSON.parse(jText); } catch (_) { continue; }
+                                if (isNormattivaOpenDataJson(data)) {
+                                    const fallbackName = (sourceProvided ? title.value.trim() : (data.metadati?.titoloDoc || jName.split('/').pop().replace(/\.json$/i, '') || file.name.replace(/\.zip$/i, '')));
+                                    if (!detectedTitle) detectedTitle = fallbackName;
+                                    allZipEntries.push(...parseNormattivaOpenDataJson(data, fallbackName, selectedCat));
+                                } else {
+                                    const builtInIds = new Set(legalDatabase.map(doc => doc.id));
+                                    const hasImportedArray = !Array.isArray(data) && Array.isArray(data.importedDocs);
+                                    const rawRows = Array.isArray(data) ? data : hasImportedArray ? [...data.importedDocs, ...(Array.isArray(data.extendedArticleIndex) ? data.extendedArticleIndex : [])] : [...(Array.isArray(data.legalDatabase) ? data.legalDatabase : []), ...(Array.isArray(data.extendedArticleIndex) ? data.extendedArticleIndex : [])];
+                                    const rows = rawRows.filter(x => !builtInIds.has(x?.id) && x && typeof x.title === 'string');
+                                    rows.forEach((x, i) => allZipEntries.push({ ...x, id: 'temp-' + i, source: x.source || (sourceProvided ? title.value.trim() : file.name.replace(/\.zip$/i, '')), category: x.category || selectedCat, categoryLabel: x.categoryLabel || CATEGORY_LABELS[x.category] || 'I Miei Codici (Importati)', article: x.article || ('Voce ' + (i + 1)), summary: x.summary || x.title, fullText: x.fullText || '<p>' + safeHtml(x.summary || x.title) + '</p>', tags: Array.isArray(x.tags) ? x.tags : ['importato'] }));
+                                }
+                            }
+                            if (!allZipEntries.length) throw new Error('Nessun JSON normativo valido trovato dentro lo ZIP.');
+                            const chosenSource = sourceProvided ? title.value.trim() : (detectedTitle || file.name.replace(/\.zip$/i, ''));
+                            if (title && !sourceProvided && detectedTitle) title.value = chosenSource;
+                            const count = await applyImportedDocs(allZipEntries, chosenSource);
+                            event.target.value = '';
+                            closeImportModal();
+                            showToast('Archivio ZIP importato: ' + count.toLocaleString('it-IT') + ' articoli salvati.');
+                            return;
+                        }
+                        const textEntry = entryNames.find(n => /\.(?:md|txt)$/i.test(n));
+                        if (textEntry) {
+                            const extracted = cleanImportedMarkdown(await zip.getEntryText(textEntry));
+                            document.getElementById('import-raw-text').value = extracted;
+                            updateImportPreview(extracted);
+                            event.target.value = '';
+                            showToast('Testo estratto dallo ZIP: controlla il riepilogo e premi il pulsante arancione per importare.');
+                            return;
+                        }
+                        throw new Error('Lo ZIP non contiene file .json, .md o .txt importabili.');
+                    } catch (error) {
+                        showToast(error.message || 'Importazione ZIP non riuscita.');
+                        const status = document.getElementById('import-status');
+                        if (status) { status.textContent = error.message || 'Importazione ZIP non riuscita.'; status.classList.remove('hidden'); }
+                    } finally {
+                        isImporting = false;
+                        resetImportButton();
+                    }
+                    return;
+                }
                 if (file.name.toLowerCase().endsWith('.pdf')) {
                     showToast('Lettura del PDF in corso…');
                     const result = await extractPdfText(file);
@@ -4220,7 +4916,7 @@
                                 : [...(Array.isArray(data.legalDatabase) ? data.legalDatabase : []), ...(Array.isArray(data.extendedArticleIndex) ? data.extendedArticleIndex : [])];
                         const rows = rawRows.filter(x => !builtInIds.has(x?.id));
                         const entries = rows.filter(x => x && typeof x.title === 'string').map((x, i) => ({ ...x, id: 'temp-' + i, source: x.source || (sourceProvided ? title.value.trim() : file.name.replace(/\.[^/.]+$/, '')), category: x.category || document.getElementById('import-category-select').value, categoryLabel: x.categoryLabel || CATEGORY_LABELS[x.category] || 'I Miei Codici (Importati)', article: x.article || ('Voce ' + (i + 1)), summary: x.summary || x.title, fullText: x.fullText || '<p>' + safeHtml(x.summary || x.title) + '</p>', tags: Array.isArray(x.tags) ? x.tags : ['importato'] }));
-                        if (entries.length) { isImporting = true; setImportBusy('Importazione…', 'Sto salvando il file JSON in IndexedDB.'); try { if (!Array.isArray(data) && data.bookmarkNotes && typeof data.bookmarkNotes === 'object') { bookmarkNotes = { ...bookmarkNotes, ...data.bookmarkNotes }; await saveBookmarkNotes(); } const count = await applyImportedDocs(entries, sourceProvided ? title.value.trim() : ''); event.target.value = ''; closeImportModal(); showToast('Importazione completata: ' + count.toLocaleString('it-IT') + ' voci salvate.'); } catch (error) { showToast(error.message || 'Importazione JSON non completata.'); } finally { isImporting = false; resetImportButton(); } return; }
+                        if (entries.length) { isImporting = true; setImportBusy('Importazione…', 'Sto salvando il file JSON in IndexedDB.'); try { if (!Array.isArray(data) && data.bookmarkNotes && typeof data.bookmarkNotes === 'object') { bookmarkNotes = { ...bookmarkNotes, ...data.bookmarkNotes }; await saveBookmarkNotes(); } if (!Array.isArray(data) && data.bookmarkFolders && typeof data.bookmarkFolders === 'object') { bookmarkFolders = { ...bookmarkFolders, ...data.bookmarkFolders }; await saveBookmarkFolders(); } const count = await applyImportedDocs(entries, sourceProvided ? title.value.trim() : ''); event.target.value = ''; closeImportModal(); showToast('Importazione completata: ' + count.toLocaleString('it-IT') + ' voci salvate.'); } catch (error) { showToast(error.message || 'Importazione JSON non completata.'); } finally { isImporting = false; resetImportButton(); } return; }
                     } catch (error) { if (error instanceof SyntaxError) { /* Il JSON non è un archivio riconosciuto: testo nella textarea. */ } else throw error; }
                 }
                 document.getElementById('import-raw-text').value = text; updateImportPreview(text);
@@ -4383,19 +5079,27 @@
         async function deleteImportedCode(codeKey) {
             const removed = importedDocs.filter(doc => normalizeCodeName(doc.source || doc.categoryLabel) === codeKey);
             if (!removed.length) return;
+            if (!window.confirm('Vuoi eliminare “' + removed[0].source + '” (' + removed.length.toLocaleString('it-IT') + ' voci) dall’archivio locale?')) return;
             const oldDocs = importedDocs; const oldBookmarks = bookmarks;
             const ids = new Set(removed.map(doc => doc.id)); importedDocs = oldDocs.filter(doc => !ids.has(doc.id)); invalidateSearchIndex(); bookmarks = oldBookmarks.filter(id => !ids.has(id));
             try { await writeImportedDocsChanges(oldDocs, importedDocs, bookmarks); }
             catch (error) { importedDocs = oldDocs; bookmarks = oldBookmarks; return showToast('Eliminazione non riuscita: ' + (error.message || 'errore IndexedDB')); }
+            if (currentSourceFilter === codeKey
+                || (currentSourceFilter === '__ALL_CODES__' && !importedDocs.some(d => !isManualDocument(d)))
+                || (currentSourceFilter === '__ALL_MANUALS__' && !importedDocs.some(d => isManualDocument(d)))) {
+                currentSourceFilter = '';
+            }
             updateNotebookCountUI(); updateBookmarkUI(); renderResults();
             showToast('Eliminato “' + removed[0].source + '” (' + removed.length.toLocaleString('it-IT') + ' voci).');
         }
         async function clearImportedDocs() {
             if (!importedDocs.length) return showToast('Non ci sono voci importate da rimuovere.');
+            if (!window.confirm('Vuoi rimuovere tutti i codici e manuali importati (' + importedDocs.length.toLocaleString('it-IT') + ' voci)? L’operazione non può essere annullata.')) return;
             const oldDocs = importedDocs; const oldBookmarks = bookmarks;
             const ids = new Set(oldDocs.map(x => x.id)); importedDocs = []; invalidateSearchIndex(); bookmarks = oldBookmarks.filter(id => !ids.has(id));
             try { await writeImportedDocsChanges(oldDocs, importedDocs, bookmarks); }
             catch (error) { importedDocs = oldDocs; bookmarks = oldBookmarks; return showToast('Eliminazione non riuscita: ' + (error.message || 'errore IndexedDB')); }
+            currentSourceFilter = '';
             updateNotebookCountUI(); updateBookmarkUI(); renderResults(); showToast('Voci importate rimosse.');
         }
         let exportInProgress = false;
@@ -4404,7 +5108,7 @@
             exportInProgress = true;
             try {
                 await ensureImportedDocsLoaded();
-                const payload = { app: 'Lex', exportedAt: new Date().toISOString(), importedDocs, bookmarks, bookmarkNotes, legalDatabase };
+                const payload = { app: 'Lex', exportedAt: new Date().toISOString(), importedDocs, bookmarks, bookmarkNotes, bookmarkFolders, legalDatabase };
                 const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json;charset=utf-8'}); const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'lex_archivio_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(url); closeExportModal(); showToast('Archivio esportato in JSON.');
             } catch (error) { showToast('Esportazione JSON non riuscita: ' + (error.message || 'errore di lettura archivio')); }
@@ -4450,7 +5154,7 @@
             // L'esportazione puo avvenire mentre l'utente e dentro Archivio o
             // con una finestra aperta: il file nuovo deve sempre partire da Home.
             clone.querySelectorAll('details[open]').forEach(element => element.removeAttribute('open'));
-            ['detail-modal', 'import-modal', 'export-modal', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'normattiva-download-modal', 'compare-codes-modal', 'bookmarks-drawer', 'pwa-install-modal', 'pwa-update-banner'].forEach(id => {
+            ['detail-modal', 'toc-modal', 'import-modal', 'export-modal', 'manual-api-modal', 'ai-settings-modal', 'ask-codes-modal', 'web-search-modal', 'legal-db-search-modal', 'link-check-modal', 'normattiva-download-modal', 'compare-codes-modal', 'bookmarks-drawer', 'pwa-install-modal', 'pwa-update-banner'].forEach(id => {
                 const layer = clone.querySelector('#' + id);
                 if (layer) { layer.classList.add('hidden'); layer.classList.remove('flex'); }
             });
@@ -4458,10 +5162,10 @@
             if (clonedSearch) { clonedSearch.value = ''; clonedSearch.removeAttribute('value'); }
             const clonedClearSearch = clone.querySelector('#clear-search-btn');
             if (clonedClearSearch) clonedClearSearch.classList.add('hidden');
-            const importedOnly = clone.querySelector('#imported-only-toggle');
-            if (importedOnly) { importedOnly.checked = false; importedOnly.removeAttribute('checked'); }
-            const exactPhraseEl = clone.querySelector('#exact-phrase-toggle');
-            if (exactPhraseEl) { exactPhraseEl.checked = false; exactPhraseEl.removeAttribute('checked'); }
+            ['imported-only-toggle', 'exact-phrase-toggle', 'exclude-abrogated-toggle', 'constitutional-only-toggle', 'title-only-toggle'].forEach(id => {
+                const cb = clone.querySelector('#' + id);
+                if (cb) { cb.checked = false; cb.removeAttribute('checked'); }
+            });
             clone.querySelectorAll('.cat-tab').forEach(button => {
                 const selected = button.dataset.cat === 'all';
                 button.classList.toggle('active', selected);
@@ -4471,6 +5175,9 @@
                 button.classList.toggle('bg-white', !selected);
                 button.classList.toggle('text-slate-600', !selected);
                 button.classList.toggle('font-medium', !selected);
+                button.classList.toggle('hover:bg-slate-100', !selected);
+                button.classList.toggle('border', !selected);
+                button.classList.toggle('border-slate-200', !selected);
             });
             const categoryLabel = clone.querySelector('#category-current-label');
             if (categoryLabel) categoryLabel.textContent = 'Tutte le materie';
@@ -4486,7 +5193,7 @@
                 inline.textContent = inline.textContent.replace(/^\s*window\.__IUSSEARCH_SEED__\s*=[^\n]*\r?\n?/, '');
                 const seedScript = document.createElement('script');
                 seedScript.id = 'iussearch-seed-script';
-                seedScript.textContent = 'window.__IUSSEARCH_SEED__=' + JSON.stringify({ seedId: createStandaloneExportId(), importedDocs, bookmarks, bookmarkNotes }).replace(/<\/script/gi, '<\\/script') + ';';
+                seedScript.textContent = 'window.__IUSSEARCH_SEED__=' + JSON.stringify({ seedId: createStandaloneExportId(), importedDocs, bookmarks, bookmarkNotes, bookmarkFolders }).replace(/<\/script/gi, '<\\/script') + ';';
                 inline.parentNode.insertBefore(seedScript, inline);
             } else throw new Error('Non trovo lo script principale dell’app da includere nel file autonomo.');
             const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML], {type:'text/html;charset=utf-8'}); const url = URL.createObjectURL(blob);
@@ -4498,7 +5205,7 @@
         // =========================================================================
         // 7. PWA: INSTALLAZIONE E AVVISO NUOVA VERSIONE
         // =========================================================================
-        const APP_VERSION = '1.1.10';
+        const APP_VERSION = '1.2.0';
         let deferredPwaPrompt = null;
         let waitingServiceWorker = null;
         let pwaReloading = false;
@@ -4598,8 +5305,9 @@
                 || window.location.hostname === '127.0.0.1';
             if (!('serviceWorker' in navigator) || !isSecureForSw) return;
 
+            const hadSwController = Boolean(navigator.serviceWorker.controller);
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                if (pwaReloading) return;
+                if (!hadSwController || pwaReloading) return;
                 pwaReloading = true;
                 window.location.reload();
             });
@@ -4629,6 +5337,7 @@
             initPwa();
             const backdropClosers = [
                 ['detail-modal', closeDetailModal],
+                ['toc-modal', closeTocModal],
                 ['bookmarks-drawer', () => hideLayer('bookmarks-drawer')],
                 ['manual-api-modal', closeManualAndApi],
                 ['link-check-modal', closeLinkCheckModal],
@@ -4761,10 +5470,28 @@
                 openArticleDirectly(refBtn.getAttribute('data-legal-ref'));
             });
             document.addEventListener('keydown', event => {
+                const tag = (document.activeElement?.tagName || '').toLowerCase();
+                const inInput = ['input', 'textarea', 'select'].includes(tag) || document.activeElement?.isContentEditable;
+                if (((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') || (event.key === '/' && !inInput && !event.ctrlKey && !event.metaKey && !event.altKey)) {
+                    const searchEl = document.getElementById('main-search-input');
+                    if (searchEl) {
+                        event.preventDefault();
+                        searchEl.focus();
+                        searchEl.select();
+                        return;
+                    }
+                }
+                if (event.altKey && event.key === 'Backspace' && !inInput) {
+                    const modal = document.getElementById('detail-modal');
+                    if (modal && !modal.classList.contains('hidden') && modalNavCursor > 0) {
+                        event.preventDefault();
+                        navigateModalHistory(-1);
+                        return;
+                    }
+                }
                 if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
                     const modal = document.getElementById('detail-modal');
-                    const tag = (document.activeElement?.tagName || '').toLowerCase();
-                    if (modal && !modal.classList.contains('hidden') && !['input', 'textarea', 'select'].includes(tag)) {
+                    if (modal && !modal.classList.contains('hidden') && !inInput) {
                         const targetBtn = document.getElementById(event.key === 'ArrowLeft' ? 'modal-prev-article-btn' : 'modal-next-article-btn');
                         if (targetBtn && !targetBtn.disabled && typeof targetBtn.onclick === 'function') {
                             event.preventDefault();
@@ -4784,6 +5511,7 @@
                     ['web-search-modal', closeWebSearch],
                     ['compare-codes-modal', closeCodeCompare],
                     ['ask-codes-modal', closeAskCodes],
+                    ['toc-modal', closeTocModal],
                     ['import-modal', closeImportModal],
                     ['export-modal', closeExportModal],
                     ['bookmarks-drawer', () => hideLayer('bookmarks-drawer')],
@@ -4832,12 +5560,17 @@
                 <details class="relative">
                     <summary class="list-none cursor-pointer p-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white transition flex items-center gap-2 text-xs sm:text-sm font-semibold shadow-sm"><i class="fa-solid fa-folder-open"></i><span>Archivio</span><i class="fa-solid fa-chevron-down text-[10px] opacity-70"></i></summary>
                     <div class="absolute right-0 top-full mt-2 w-48 rounded-xl bg-white border border-slate-200 shadow-xl p-1.5 z-50">
+                        <button onclick="this.closest('details').open=false;openTocModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-amber-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-sitemap text-amber-600"></i>Indice codici</button>
                         <button onclick="this.closest('details').open=false;openImportModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-amber-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-file-import text-amber-600"></i>Importa codici</button>
                         <button onclick="this.closest('details').open=false;openExportModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-emerald-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-file-export text-emerald-600"></i>Esporta archivio</button>
                         <button onclick="this.closest('details').open=false;openLinkCheckModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-blue-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-link text-blue-600"></i>Verifica link</button>
                         <button onclick="this.closest('details').open=false;openNormattivaDownloadModal()" class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-blue-50 text-slate-800 text-xs font-semibold flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-down text-blue-600"></i>Scarica da Normattiva</button>
                     </div>
                 </details>
+
+                <button id="theme-toggle-btn" type="button" onclick="toggleTheme()" aria-label="Cambia tema chiaro o scuro" aria-pressed="false" title="Passa a tema scuro" class="p-2.5 rounded-xl bg-navy-800 hover:bg-slate-700 text-slate-200 transition flex items-center justify-center text-sm">
+                    <i class="fa-solid fa-moon text-slate-200"></i>
+                </button>
 
                 <button onclick="toggleBookmarksDrawer()" class="relative p-2.5 rounded-xl bg-navy-800 hover:bg-slate-700 text-slate-200 transition flex items-center gap-2 text-sm">
                     <i class="fa-solid fa-bookmark text-amber-400"></i>
@@ -4882,7 +5615,7 @@
                     <div class="relative flex-1 flex items-center">
                         <i class="fa-solid fa-magnifying-glass text-slate-400 ml-3.5 text-base"></i>
                         <input type="text" id="main-search-input" 
-                               placeholder="Scrivi cosa vuoi cercare (es. divorzio, 346-bis, locazione, legge 104, appalti)..." 
+                               placeholder="Cerca norma, articolo o problema (es. 2043, rumori, divorzio, appalti) — Ctrl+K" 
                                class="w-full pl-3 pr-9 py-2.5 text-slate-800 placeholder-slate-400 text-sm sm:text-base focus:outline-none rounded-xl">
                         <button id="clear-search-btn" onclick="clearSearch()" class="hidden absolute right-2.5 text-slate-400 hover:text-slate-600 p-1" title="Cancella ricerca">
                             <i class="fa-solid fa-circle-xmark"></i>
@@ -4897,12 +5630,15 @@
                 <!-- Suggerimenti rapidi -->
                 <div class="flex justify-center mt-4 text-xs">
                     <details class="quick-access-menu relative w-full max-w-3xl">
-                        <summary class="list-none cursor-pointer flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-100 border border-white/10"><i class="fa-solid fa-bolt text-amber-300"></i><span>Prove rapide, esempi e codici</span><i class="fa-solid fa-chevron-down text-[10px]"></i></summary>
+                        <summary class="list-none cursor-pointer flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-100 border border-white/10"><i class="fa-solid fa-bolt text-amber-300"></i><span>Prove rapide, esempi pratici e codici</span><i class="fa-solid fa-chevron-down text-[10px]"></i></summary>
                         <div class="absolute left-0 right-0 top-full mt-2 rounded-xl bg-navy-900 border border-slate-600 shadow-xl p-3 flex flex-wrap justify-center gap-2 z-30">
-                            <button onclick="this.closest('details').open=false;applyQuickSearch('divorzio')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Divorzio</button>
-                            <button onclick="this.closest('details').open=false;applyQuickSearch('323')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Art. 323 c.p.</button>
+                            <button onclick="this.closest('details').open=false;applyQuickSearch('divorzio')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Separazione e divorzio</button>
                             <button onclick="this.closest('details').open=false;applyQuickSearch('affidamento')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Affidamento figli</button>
-                            <button onclick="this.closest('details').open=false;applyQuickSearch('appalti')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Appalti</button>
+                            <button onclick="this.closest('details').open=false;applyQuickSearch('immissioni rumori')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Rumori del vicino</button>
+                            <button onclick="this.closest('details').open=false;applyQuickSearch('locazione')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Affitto e locazione</button>
+                            <button onclick="this.closest('details').open=false;applyQuickSearch('legge 104')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Permessi Legge 104</button>
+                            <button onclick="this.closest('details').open=false;applyQuickSearch('323')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Art. 323 c.p.</button>
+                            <button onclick="this.closest('details').open=false;applyQuickSearch('appalti')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Appalti pubblici</button>
                             <button onclick="this.closest('details').open=false;applyQuickSearch('346-bis')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">Traffico influenze (346-bis)</button>
                             <button onclick="this.closest('details').open=false;applyQuickSearch('privacy')" class="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 transition">GDPR & Privacy</button>
                             <div id="imported-quick-searches" class="contents"></div>
@@ -4934,6 +5670,9 @@
 
     <!-- Main Content -->
     <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- Stato Archivio Locale -->
+        <div id="home-archive-status" class="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm"></div>
 
         <!-- Category Tabs -->
         <details id="category-tabs" class="relative mb-5 rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -4977,8 +5716,11 @@
                     <div class="p-4 pt-2 space-y-4 border-t border-slate-100">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h3 id="results-heading" class="text-base font-bold text-slate-800">Normative e Articoli Disponibili</h3>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                         <label for="exact-phrase-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600" title="Cerca le parole esatte e consecutive (oppure usa le virgolette)"><input id="exact-phrase-toggle" type="checkbox" onchange="setExactPhraseOnly(this.checked)" class="accent-amber-600">Frase esatta</label>
+                        <label for="title-only-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600" title="Cerca solo nella rubrica e nel numero dell'articolo"><input id="title-only-toggle" type="checkbox" onchange="setTitleOnlySearch(this.checked)" class="accent-amber-600">Solo rubrica/titolo</label>
+                        <label for="exclude-abrogated-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600" title="Nasconde gli articoli contrassegnati come abrogati"><input id="exclude-abrogated-toggle" type="checkbox" onchange="setExcludeAbrogated(this.checked)" class="accent-amber-600">Escludi abrogati</label>
+                        <label for="constitutional-only-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600" title="Mostra solo articoli con pronunce di illegittimità costituzionale"><input id="constitutional-only-toggle" type="checkbox" onchange="setConstitutionalOnly(this.checked)" class="accent-amber-600">Solo Corte Cost.</label>
                         <label for="imported-only-toggle" class="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600"><input id="imported-only-toggle" type="checkbox" onchange="setImportedOnly(this.checked)" class="accent-amber-600">Solo importati</label>
                         <span id="results-count-badge" class="text-xs font-semibold bg-slate-200/80 text-slate-700 px-2.5 py-1 rounded-lg">0 norme</span>
                         <select id="sort-select" onchange="renderResults()" class="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-600 focus:outline-none">
@@ -5050,6 +5792,19 @@
                     </div>
                 </details>
 
+                <!-- Mini-Glossario Giuridico Base (Offline) -->
+                <details class="bg-white rounded-2xl border border-slate-200/80 shadow-sm">
+                    <summary class="list-none cursor-pointer flex items-center justify-between gap-3 p-4 text-sm font-bold text-slate-800"><span>
+                        <i class="fa-solid fa-book text-teal-600"></i>
+                        Mini-Glossario Giuridico Base
+                    </span><i class="fa-solid fa-chevron-down text-xs text-slate-500"></i></summary>
+                    <div class="px-4 pb-4">
+                    <input type="text" id="glossary-filter" oninput="filterGlossary()" placeholder="Cerca termine (es. querela, dolo, prescrizione)..."
+                           class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:border-blue-500">
+                    <div id="glossary-list" class="max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs"></div>
+                    </div>
+                </details>
+
                 <!-- Banche Dati Ufficiali -->
                 <div class="bg-navy-900 text-white rounded-2xl p-5 shadow-sm">
                     <h4 class="font-bold text-sm flex items-center gap-2 mb-3 text-amber-400">
@@ -5090,17 +5845,36 @@
                         <span id="modal-badge" class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Norma</span>
                         <span id="modal-status-badges" class="inline-flex flex-wrap items-center gap-1.5"></span>
                     </div>
-                    <p id="modal-breadcrumb" class="hidden text-[11px] text-slate-500 mt-1 leading-snug"></p>
+                    <p id="modal-breadcrumb" class="hidden text-[11px] text-slate-500 mt-1 leading-snug cursor-pointer hover:text-blue-700 hover:underline"></p>
                     <h3 id="modal-title" class="text-lg font-bold text-slate-900 mt-1">Titolo Norma</h3>
                 </div>
-                <button onclick="closeDetailModal()" class="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition">
+                <button onclick="closeDetailModal()" aria-label="Chiudi scheda" class="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
-            <div id="modal-article-nav" class="hidden px-6 py-2 bg-slate-100 border-b border-slate-200 flex items-center justify-between gap-2 text-xs">
-                <button id="modal-prev-article-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-amber-50 hover:border-amber-400 text-slate-800 font-semibold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Art. precedente</button>
+            <div id="modal-article-nav" class="hidden px-6 py-2 bg-slate-100 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div class="flex items-center gap-1.5">
+                    <button id="modal-history-back-btn" type="button" onclick="navigateModalHistory(-1)" class="hidden px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400 text-slate-700 font-semibold transition" title="Torna alla scheda precedente (Alt+Backspace)"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Indietro</button>
+                    <button id="modal-history-fwd-btn" type="button" onclick="navigateModalHistory(1)" class="hidden px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-400 text-slate-700 font-semibold transition" title="Avanti nella cronologia">Avanti<i class="fa-solid fa-arrow-right ml-1"></i></button>
+                    <button id="modal-prev-article-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-amber-50 hover:border-amber-400 text-slate-800 font-semibold transition"><i class="fa-solid fa-arrow-left mr-1"></i>Art. precedente</button>
+                </div>
                 <span class="hidden sm:inline text-[11px] text-slate-500">Scorri articoli (Alt + ← / →)</span>
                 <button id="modal-next-article-btn" type="button" class="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-amber-50 hover:border-amber-400 text-slate-800 font-semibold transition">Art. successivo<i class="fa-solid fa-arrow-right ml-1"></i></button>
+            </div>
+            <div id="modal-tools-bar" class="px-6 py-2 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div class="flex items-center gap-1.5 flex-1 min-w-[150px]">
+                    <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
+                    <input id="modal-find-input" type="text" oninput="runModalFind(this.value, true)" onkeydown="if(event.key==='Enter'){event.preventDefault();stepModalFind(event.shiftKey?-1:1);}" placeholder="Trova nel testo…" class="w-40 flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-amber-500">
+                    <span id="modal-find-count" class="text-[11px] text-slate-500 whitespace-nowrap"></span>
+                    <button type="button" onclick="stepModalFind(-1)" title="Occorrenza precedente" aria-label="Occorrenza precedente" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"><i class="fa-solid fa-chevron-up text-[10px]"></i></button>
+                    <button type="button" onclick="stepModalFind(1)" title="Occorrenza successiva" aria-label="Occorrenza successiva" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"><i class="fa-solid fa-chevron-down text-[10px]"></i></button>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="adjustReadingFontSize(-1)" title="Riduci dimensione testo" aria-label="Riduci dimensione testo" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">A−</button>
+                    <span id="modal-font-scale-label" class="text-[11px] text-slate-500 font-semibold">100%</span>
+                    <button type="button" onclick="adjustReadingFontSize(1)" title="Ingrandisci dimensione testo" aria-label="Ingrandisci dimensione testo" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">A+</button>
+                    <button type="button" onclick="printCurrentModalArticle()" title="Stampa o salva articolo in PDF" class="ml-2 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold flex items-center gap-1"><i class="fa-solid fa-print"></i><span class="hidden sm:inline">Stampa / PDF</span></button>
+                </div>
             </div>
             <div id="modal-body" class="p-6 overflow-y-auto font-serif text-slate-800 text-sm sm:text-base leading-relaxed space-y-4"></div>
             <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
@@ -5132,12 +5906,27 @@
                     <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
-            <div class="px-5 pt-3 pb-2 bg-slate-50 border-b border-slate-200">
-                <input type="text" id="bookmarks-filter-input" oninput="filterBookmarksList(this.value)" placeholder="Filtra segnalibri o note…" class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500">
+            <div class="px-5 pt-3 pb-2 bg-slate-50 border-b border-slate-200 space-y-2">
+                <input type="text" id="bookmarks-filter-input" oninput="filterBookmarksList(this.value)" placeholder="Filtra segnalibri, fascicoli o note…" class="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-folder text-amber-600 text-xs"></i>
+                    <select id="bookmarks-folder-filter" onchange="filterBookmarksByFolder(this.value)" aria-label="Filtra per fascicolo" class="flex-1 text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-amber-500">
+                        <option value="all">Tutti i fascicoli</option>
+                    </select>
+                </div>
+                <datalist id="bookmark-folders-datalist"></datalist>
             </div>
             <div id="bookmarks-list" class="flex-1 overflow-y-auto p-5 space-y-3"></div>
-            <div class="p-4 border-t border-slate-200 bg-slate-50 text-right">
-                <button onclick="clearAllBookmarks()" class="text-xs text-rose-600 hover:text-rose-800 font-medium">
+            <div class="p-4 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="exportBookmarksDossierMarkdown()" class="px-2.5 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-semibold transition inline-flex items-center gap-1.5" title="Esporta i segnalibri filtrati in formato Markdown">
+                        <i class="fa-solid fa-file-export text-amber-400"></i>Esporta Dossier (.md)
+                    </button>
+                    <button type="button" onclick="printBookmarksDossier()" class="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition inline-flex items-center gap-1.5" title="Stampa o salva il fascicolo in PDF">
+                        <i class="fa-solid fa-print"></i>Stampa / PDF
+                    </button>
+                </div>
+                <button type="button" onclick="clearAllBookmarks()" class="text-xs text-rose-600 hover:text-rose-800 font-medium">
                     Svuota segnalibri
                 </button>
             </div>
@@ -5152,7 +5941,7 @@
                     <i class="fa-solid fa-file-import text-amber-400"></i>
                     <div>
                         <h3 id="import-modal-title" class="font-bold text-base leading-tight">Importa Codici e Dati Normativi</h3>
-                        <p class="text-[11px] text-slate-300">Carica JSON da dati.normattiva.it, manuali (.epub, .pdf, .md, .txt) o archivi</p>
+                        <p class="text-[11px] text-slate-300">Carica direttamente .zip o .json da dati.normattiva.it, manuali (.epub, .pdf, .md, .txt)</p>
                     </div>
                 </div>
                 <button onclick="closeImportModal()" aria-label="Chiudi finestra importazione" class="text-slate-300 hover:text-white p-1.5">
@@ -5162,7 +5951,7 @@
 
             <div class="p-6 overflow-y-auto space-y-4 text-sm">
                 <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 leading-relaxed">
-                    <strong>Importazione intelligente:</strong> Scegli se stai importando un <strong>Codice / Legge</strong> (JSON di Normattiva, PDF, TXT, MD) oppure un <strong>Manuale / Dispensa</strong> (<strong><code>.epub</code> senza DRM</strong>, <code>.pdf</code> testuale, <code>.md</code>, <code>.txt</code>). I rinvii normativi dentro i manuali restano cliccabili.
+                    <strong>Importazione intelligente:</strong> Scegli se stai importando un <strong>Codice / Legge</strong> (anche lo <strong><code>.zip</code> scaricato direttamente da dati.normattiva.it</strong> senza decomprimerlo, oppure JSON, PDF, TXT, MD) oppure un <strong>Manuale / Dispensa</strong> (<strong><code>.epub</code> senza DRM</strong>, <code>.pdf</code> testuale, <code>.md</code>, <code>.txt</code>). I rinvii normativi dentro i manuali restano cliccabili.
                 </div>
 
                 <fieldset class="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -5170,7 +5959,7 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                         <label class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-700 cursor-pointer">
                             <input type="radio" name="import-doc-type" value="code" checked onchange="updateImportDocTypeUI()" class="mt-0.5 accent-amber-600">
-                            <span><strong>Codice / Legge</strong><span class="block mt-0.5 text-[11px] text-slate-500">Divide per articoli (JSON Normattiva, PDF, TXT, MD)</span></span>
+                            <span><strong>Codice / Legge</strong><span class="block mt-0.5 text-[11px] text-slate-500">Divide per articoli (ZIP/JSON Normattiva, PDF, TXT, MD)</span></span>
                         </label>
                         <label class="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs text-slate-700 cursor-pointer">
                             <input type="radio" name="import-doc-type" value="manual" onchange="updateImportDocTypeUI()" class="mt-0.5 accent-amber-600">
@@ -5197,8 +5986,8 @@
                         <input type="text" id="import-source-title" placeholder="es. Codice Civile 2026" class="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:border-amber-500">
                     </div>
                     <div>
-                        <label for="import-file-input" class="block text-xs font-semibold text-slate-700 mb-1">Carica file (.epub, .pdf, .json, .txt, .md)</label>
-                        <input type="file" id="import-file-input" accept=".epub,.pdf,.txt,.md,.json,application/pdf,application/epub+zip" onchange="handleNotebookFileUpload(event)" class="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-navy-900 file:text-white hover:file:bg-navy-800 cursor-pointer">
+                        <label for="import-file-input" class="block text-xs font-semibold text-slate-700 mb-1">Carica file (.zip, .json, .epub, .pdf, .txt, .md)</label>
+                        <input type="file" id="import-file-input" accept=".zip,.epub,.pdf,.txt,.md,.json,application/zip,application/x-zip-compressed,application/pdf,application/epub+zip" onchange="handleNotebookFileUpload(event)" class="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-navy-900 file:text-white hover:file:bg-navy-800 cursor-pointer">
                     </div>
                 </div>
 
@@ -5348,7 +6137,7 @@
                         </button>
                     </div>
                     <p class="text-[11px] leading-relaxed text-blue-900">
-                        <strong>Come scaricare il JSON da dati.normattiva.it:</strong> clicca il pulsante blu per aprire il portale già filtrato sull’atto selezionato, scegli formato <strong>JSON</strong> + <strong>Vigente ad oggi</strong> → <strong>Download</strong>, estrai il file <code>.json</code> dallo <code>.ZIP</code> e poi importalo qui.
+                        <strong>Come scaricare il JSON da dati.normattiva.it:</strong> clicca il pulsante blu per aprire il portale già filtrato sull’atto selezionato, scegli formato <strong>JSON</strong> + <strong>Vigente ad oggi</strong> → <strong>Download</strong>, poi importa qui direttamente il file <code>.zip</code> scaricato (senza bisogno di estrarlo) oppure il <code>.json</code> interno.
                     </p>
                 </div>
             </div>
@@ -5463,12 +6252,38 @@
     </div>
 
     <div id="ai-settings-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="ai-settings-title">
-      <section class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden"><header class="bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="ai-settings-title" class="font-bold">Gemini AI</h2><p id="ai-active-model-label" class="text-xs text-slate-300">Modello attivo: gemini-3.5-flash-lite (rilevamento automatico)</p></div><button onclick="closeAiSettings()" aria-label="Chiudi">✕</button></header><div class="p-5 space-y-3"><label for="gemini-api-key" class="block text-sm font-semibold">API key</label><input id="gemini-api-key" type="password" autocomplete="off" placeholder="Incolla la chiave Gemini" class="w-full border rounded-xl p-3 text-sm"><div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"><span id="ai-models-summary" class="text-xs text-slate-700">Modello predefinito: gemini-3.5-flash-lite (fallback automatico attivo)</span><button id="refresh-gemini-models-btn" type="button" onclick="refreshGeminiModelsUI()" class="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50"><i class="fa-solid fa-rotate mr-1"></i>Rileva modelli</button></div><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-700 hover:text-violet-900 underline underline-offset-2"><i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>Non hai una chiave? Creala su Google AI Studio</a><p class="text-xs text-slate-600">La chiave viene salvata in IndexedDB su questo browser e non viene inclusa negli export. Le richieste AI inviano la domanda e i soli estratti selezionati a Google; l’uso può consumare quota o generare costi.</p><p class="text-xs text-amber-800">Su una pagina pubblicata, la chiave resta nel dispositivo/browser di chi la configura; non inserirla nel codice pubblico.</p><div id="ai-settings-status" class="hidden text-xs rounded-lg p-2" role="status" aria-live="polite"></div></div><footer class="p-4 bg-slate-50 flex justify-between"><button onclick="forgetAiKey()" class="text-xs text-rose-700">Rimuovi chiave</button><div class="flex gap-2"><button onclick="closeAiSettings()" class="px-3 py-2 border rounded-lg text-xs">Chiudi</button><button onclick="saveAiKey()" class="px-3 py-2 bg-violet-700 text-white rounded-lg text-xs font-semibold">Salva e verifica</button></div></footer></section>
+      <section class="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden"><header class="bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="ai-settings-title" class="font-bold">Gemini AI</h2><p id="ai-active-model-label" class="text-xs text-slate-300">Modello attivo: gemini-3.5-flash-lite (rilevamento automatico)</p></div><button onclick="closeAiSettings()" aria-label="Chiudi">✕</button></header><div class="p-5 space-y-3"><form onsubmit="event.preventDefault();saveAiKey()" class="space-y-2"><label for="gemini-api-key" class="block text-sm font-semibold">API key</label><input id="gemini-api-key" type="password" autocomplete="off" placeholder="Incolla la chiave Gemini" class="w-full border rounded-xl p-3 text-sm"></form><div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"><span id="ai-models-summary" class="text-xs text-slate-700">Modello predefinito: gemini-3.5-flash-lite (fallback automatico attivo)</span><button id="refresh-gemini-models-btn" type="button" onclick="refreshGeminiModelsUI()" class="rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-50"><i class="fa-solid fa-rotate mr-1"></i>Rileva modelli</button></div><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm font-semibold text-violet-700 hover:text-violet-900 underline underline-offset-2"><i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>Non hai una chiave? Creala su Google AI Studio</a><p class="text-xs text-slate-600">La chiave viene salvata in IndexedDB su questo browser e non viene inclusa negli export. Le richieste AI inviano la domanda e i soli estratti selezionati a Google; l’uso può consumare quota o generare costi.</p><p class="text-xs text-amber-800">Su una pagina pubblicata, la chiave resta nel dispositivo/browser di chi la configura; non inserirla nel codice pubblico.</p><div id="ai-settings-status" class="hidden text-xs rounded-lg p-2" role="status" aria-live="polite"></div></div><footer class="p-4 bg-slate-50 flex justify-between"><button onclick="forgetAiKey()" class="text-xs text-rose-700">Rimuovi chiave</button><div class="flex gap-2"><button onclick="closeAiSettings()" class="px-3 py-2 border rounded-lg text-xs">Chiudi</button><button onclick="saveAiKey()" class="px-3 py-2 bg-violet-700 text-white rounded-lg text-xs font-semibold">Salva e verifica</button></div></footer></section>
     </div>
     <div id="ask-codes-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="ask-codes-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="ask-codes-title" class="font-bold">Chiedi ai tuoi Codici</h2><p class="text-xs text-slate-300">Scegli le fonti da usare per la risposta</p></div><button onclick="closeAskCodes()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="ask-codes-question" class="block text-sm font-semibold mb-2">La tua domanda</label><textarea id="ask-codes-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. Quando un contratto può essere annullato per errore?"></textarea><p class="mt-1.5 text-[11px] text-slate-500"><i class="fa-solid fa-shield-halved mr-1 text-amber-600"></i>Non inserire nomi reali, codici fiscali o dati identificativi: il testo della domanda viene inviato a Google Gemini.</p><fieldset class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><legend class="px-1 text-xs font-bold text-slate-700">Fonti della risposta</legend><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive" checked class="mt-0.5"><span><strong>Solo archivio</strong> — risposta basata esclusivamente sugli articoli importati. Se non bastano, l’AI lo dichiara.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive-web" class="mt-0.5"><span><strong>Archivio + link di ricerca web (senza grounding)</strong> — risposta basata sull’archivio; Gemini aggiunge parole chiave e link esterni, senza consultare il web.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="ask-codes-source-mode" value="archive-web-grounded" class="mt-0.5"><span><strong>Archivio + ricerca web diretta (grounding)</strong> — integra gli articoli locali con una ricerca Google Search di Gemini e cita le fonti trovate. <em>Limiti gratuiti ed eventuali costi dipendono dal modello e dal piano della chiave API.</em></span></label></fieldset><div class="flex justify-end mt-3"><button id="ask-codes-submit" onclick="askYourCodes()" class="px-4 py-2 bg-violet-700 text-white rounded-xl text-sm font-semibold">Cerca e chiedi</button></div><section id="ask-codes-output" class="hidden mt-4 rounded-xl bg-slate-50 border text-sm"><div id="ask-codes-answer" class="p-4 whitespace-pre-wrap leading-relaxed"></div><div id="ask-codes-local-evidence" class="hidden border-t p-4 text-sm"></div><div id="ask-codes-web-sources" class="hidden border-t p-4 text-sm"></div></section></div></section></div>
     <div id="web-search-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="web-search-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="web-search-title" class="font-bold">Ricerca web con Gemini</h2><p class="text-xs text-slate-300">Scegli se preparare i link o far consultare il web a Gemini</p></div><button onclick="closeWebSearch()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="web-search-question" class="block text-sm font-semibold mb-2">Cosa vuoi cercare?</label><textarea id="web-search-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. Quali novità recenti riguardano il Codice della strada?"></textarea><p class="mt-1.5 text-[11px] text-slate-500"><i class="fa-solid fa-shield-halved mr-1 text-amber-600"></i>Non inserire nomi reali, codici fiscali o dati identificativi: il testo della domanda viene inviato a Google Gemini.</p><fieldset class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><legend class="px-1 text-xs font-bold text-slate-700">Modalità di ricerca</legend><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="web-search-mode" value="manual" checked class="mt-0.5"><span><strong>Parole chiave e link (senza grounding)</strong> — Gemini prepara i termini di ricerca e i collegamenti ai portali; apri tu i risultati e verifichi le fonti. Consumo minimo di quota API.</span></label><label class="flex items-start gap-2 py-1 text-xs text-slate-700"><input type="radio" name="web-search-mode" value="grounding" class="mt-0.5"><span><strong>Ricerca web diretta con Gemini (grounding)</strong> — Gemini consulta Google Search e restituisce una sintesi con fonti. <em>Disponibilità, limiti gratuiti ed eventuali costi dipendono dal modello attivo e dal piano Google AI della tua chiave.</em></span></label></fieldset><div class="flex justify-end mt-3"><button id="web-search-submit" onclick="searchWebWithGemini()" class="px-4 py-2 bg-violet-700 text-white rounded-xl text-sm font-semibold">Avvia la modalità selezionata</button></div><section id="web-search-output" class="hidden mt-4 p-4 rounded-xl bg-slate-50 border text-sm"><div id="web-search-answer" class="whitespace-pre-wrap leading-relaxed"></div><div id="web-search-sources" class="mt-4 border-t pt-3 text-sm"></div></section></div></section></div>
     <div id="legal-db-search-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4 overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-labelledby="legal-db-title"><section class="w-full max-w-2xl max-h-[90vh] max-h-[90dvh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="shrink-0 bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="legal-db-title" class="font-bold">Cerca nelle banche dati</h2><p class="text-xs text-slate-300">Gemini prepara le parole chiave; i link aprono ricerche nei portali selezionati</p></div><button onclick="closeLegalDatabaseSearch()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto overscroll-contain flex-1 min-h-0"><label for="legal-db-question" class="block text-sm font-semibold mb-2">Argomento, caso o articolo</label><textarea id="legal-db-question" rows="3" class="w-full border rounded-xl p-3 text-sm" placeholder="Es. rumori del vicino; art. 844 c.c.; riforma del Codice della strada"></textarea><p class="mt-1.5 text-[11px] text-slate-500"><i class="fa-solid fa-shield-halved mr-1 text-amber-600"></i>Non inserire nomi reali, codici fiscali o dati identificativi: il testo della domanda viene inviato a Google Gemini.</p><p class="mt-2 text-[11px] text-slate-500">Questa modalità usa Gemini senza Google Search grounding. I risultati si aprono in nuove schede e vanno verificati direttamente nei siti.</p><div class="flex justify-end mt-3"><button id="legal-db-submit" onclick="searchLegalDatabasesWithGemini()" class="px-4 py-2 bg-emerald-700 text-white rounded-xl text-sm font-semibold">Genera parole chiave e link</button></div><section id="legal-db-output" class="hidden mt-4 p-4 rounded-xl bg-slate-50 border text-sm"><div id="legal-db-terms" class="font-medium text-slate-800"></div><div id="legal-db-links" class="mt-3 flex flex-wrap gap-2"></div></section></div></section></div>
     <div id="compare-codes-modal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="compare-codes-title"><section class="w-full max-w-3xl max-h-[85vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col"><header class="bg-navy-900 text-white p-5 flex justify-between"><div><h2 id="compare-codes-title" class="font-bold">Confronta versioni importate</h2><p class="text-xs text-slate-300">Confronto per numero articolo tra due fonti importate</p></div><button onclick="closeCodeCompare()" aria-label="Chiudi">✕</button></header><div class="p-5 overflow-y-auto"><div class="grid sm:grid-cols-2 gap-3"><select id="compare-source-a" class="border rounded-lg p-2 text-sm"></select><select id="compare-source-b" class="border rounded-lg p-2 text-sm"></select></div><button onclick="compareImportedVersions()" class="mt-3 px-4 py-2 bg-violet-700 text-white rounded-lg text-xs font-semibold">Confronta testi</button><div id="compare-output" class="mt-4 text-sm space-y-3"></div></div></section></div>
+
+    <!-- Modal Indice Gerarchico Codici e Manuali -->
+    <div id="toc-modal" role="dialog" aria-modal="true" aria-labelledby="toc-modal-title" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+        <section class="w-full max-w-3xl max-h-[88vh] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
+            <header class="shrink-0 bg-navy-900 text-white px-5 py-4 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-sitemap text-amber-400"></i>
+                    <div>
+                        <h2 id="toc-modal-title" class="font-bold text-base leading-tight">Indice Gerarchico Codici e Manuali</h2>
+                        <p class="text-[11px] text-slate-300">Naviga per Libro, Titolo, Capo e Sezione oppure filtra una rubrica</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeTocModal()" aria-label="Chiudi indice" class="text-slate-300 hover:text-white p-1.5">✕</button>
+            </header>
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <select id="toc-source-select" onchange="renderTocTree()" aria-label="Seleziona codice o manuale" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-amber-500">
+                    <option value="">Seleziona un codice o manuale…</option>
+                </select>
+                <input id="toc-filter-input" type="text" oninput="renderTocTree()" placeholder="Filtra per articolo, rubrica o titolo…" class="w-full text-xs bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-amber-500">
+            </div>
+            <div id="toc-tree-container" class="flex-1 overflow-y-auto p-5 space-y-2 text-xs"></div>
+            <footer class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button type="button" onclick="closeTocModal()" class="px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-100">Chiudi</button>
+            </footer>
+        </section>
+    </div>
 
     <!-- Modal Guida Installazione PWA -->
     <div id="pwa-install-modal" role="dialog" aria-modal="true" aria-labelledby="pwa-install-modal-title" class="fixed inset-0 z-[70] hidden items-center justify-center bg-slate-950/60 p-4">
@@ -5493,9 +6308,12 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-slate-200 py-5 px-4 sm:px-6 lg:px-8 mt-10">
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-            <p><strong>Lex</strong> <span class="text-slate-400">v1.1.10</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
+            <p><strong>Lex</strong> <span class="text-slate-400">v1.2.0</span> — Ricerca immediata della normativa di riferimento (Civile, Penale, Pubblico).</p>
             <p>Ricerca normativa di base senza API key; le funzioni AI richiedono una chiave Gemini.</p>
         </div>
     </footer>
+
+    <!-- Foglio di stampa Dossier / Articolo -->
+    <div id="print-dossier-sheet" aria-hidden="true"></div>
 </body>
 </html>
